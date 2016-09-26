@@ -484,7 +484,7 @@ void Lowering::TreeNodeInfoInit(GenTree* tree)
         case GT_LE:
         case GT_GE:
         case GT_GT:
-            LowerCmp(tree);
+            TreeNodeInfoInitCmp(tree);
             break;
 
         case GT_CKFINITE:
@@ -523,12 +523,12 @@ void Lowering::TreeNodeInfoInit(GenTree* tree)
         break;
 
         case GT_BLK:
-        case GT_OBJ:
         case GT_DYN_BLK:
             // These should all be eliminated prior to Lowering.
             assert(!"Non-store block node in Lowering");
             info->srcCount = 0;
             info->dstCount = 0;
+            break;
 
         case GT_STORE_BLK:
         case GT_STORE_OBJ:
@@ -1859,7 +1859,7 @@ void Lowering::SetIndirAddrOpCounts(GenTreePtr indirTree)
     }
 }
 
-void Lowering::LowerCmp(GenTreePtr tree)
+void Lowering::TreeNodeInfoInitCmp(GenTreePtr tree)
 {
     TreeNodeInfo* info = &(tree->gtLsraInfo);
 

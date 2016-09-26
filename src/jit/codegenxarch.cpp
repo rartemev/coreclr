@@ -231,6 +231,8 @@ void CodeGen::genEmitGSCookieCheck(bool pushReg)
     }
 
     regNumber regGSCheck;
+    regMaskTP regMaskGSCheck = RBM_NONE;
+
     if (!pushReg)
     {
         // Non-tail call: we can use any callee trash register that is not
@@ -251,8 +253,11 @@ void CodeGen::genEmitGSCookieCheck(bool pushReg)
     else
     {
 #ifdef _TARGET_X86_
-        NYI_X86("Tail calls from methods that need GS check");
-        regGSCheck = REG_NA;
+        // It doesn't matter which register we pick, since we're going to save and restore it
+        // around the check.
+        // TODO-CQ: Can we optimize the choice of register to avoid doing the push/pop sometimes?
+        regGSCheck     = REG_EAX;
+        regMaskGSCheck = RBM_EAX;
 #else  // !_TARGET_X86_
         // Tail calls from methods that need GS check:  We need to preserve registers while
         // emitting GS cookie check for a tail prefixed call or a jmp. To emit GS cookie
@@ -287,8 +292,13 @@ void CodeGen::genEmitGSCookieCheck(bool pushReg)
 #endif // !_TARGET_X86_
     }
 
+    regMaskTP   byrefPushedRegs = RBM_NONE;
+    regMaskTP   norefPushedRegs = RBM_NONE;
+    regMaskTP   pushedRegs      = RBM_NONE;
+
     if (compiler->gsGlobalSecurityCookieAddr == nullptr)
     {
+#if defined(_TARGET_AMD64_)
         // If GS cookie value fits within 32-bits we can use 'cmp mem64, imm32'.
         // Otherwise, load the value into a reg and use 'cmp mem64, reg64'.
         if ((int)compiler->gsGlobalSecurityCookieVal != (ssize_t)compiler->gsGlobalSecurityCookieVal)
@@ -297,7 +307,9 @@ void CodeGen::genEmitGSCookieCheck(bool pushReg)
             getEmitter()->emitIns_S_R(INS_cmp, EA_PTRSIZE, regGSCheck, compiler->lvaGSSecurityCookie, 0);
         }
         else
+#endif // defined(_TARGET_AMD64_)
         {
+            assert((int)compiler->gsGlobalSecurityCookieVal == (ssize_t)compiler->gsGlobalSecurityCookieVal);
             getEmitter()->emitIns_S_I(INS_cmp, EA_PTRSIZE, compiler->lvaGSSecurityCookie, 0,
                                       (int)compiler->gsGlobalSecurityCookieVal);
         }
@@ -305,6 +317,9 @@ void CodeGen::genEmitGSCookieCheck(bool pushReg)
     else
     {
         // Ngen case - GS cookie value needs to be accessed through an indirection.
+
+        pushedRegs = genPushRegs(regMaskGSCheck, &byrefPushedRegs, &norefPushedRegs);
+
         instGen_Set_Reg_To_Imm(EA_HANDLE_CNS_RELOC, regGSCheck, (ssize_t)compiler->gsGlobalSecurityCookieAddr);
         getEmitter()->emitIns_R_AR(ins_Load(TYP_I_IMPL), EA_PTRSIZE, regGSCheck, regGSCheck, 0);
         getEmitter()->emitIns_S_R(INS_cmp, EA_PTRSIZE, regGSCheck, compiler->lvaGSSecurityCookie, 0);
@@ -315,6 +330,8 @@ void CodeGen::genEmitGSCookieCheck(bool pushReg)
     inst_JMP(jmpEqual, gsCheckBlk);
     genEmitHelperCall(CORINFO_HELP_FAIL_FAST, 0, EA_UNKNOWN);
     genDefineTempLabel(gsCheckBlk);
+
+    genPopRegs(pushedRegs, byrefPushedRegs, norefPushedRegs);
 }
 
 /*****************************************************************************
@@ -1281,7 +1298,11 @@ void CodeGen::genCodeForMulHi(GenTreeOp* treeNode)
     }
 }
 
-// generate code for a DIV or MOD operation
+//------------------------------------------------------------------------
+// genCodeForDivMod: Generate code for a DIV or MOD operation.
+//
+// Arguments:
+//    treeNode - the node to generate the code for
 //
 void CodeGen::genCodeForDivMod(GenTreeOp* treeNode)
 {
@@ -1293,8 +1314,27 @@ void CodeGen::genCodeForDivMod(GenTreeOp* treeNode)
     var_types  targetType = treeNode->TypeGet();
     emitter*   emit       = getEmitter();
 
-    // dividend is not contained.
-    assert(!dividend->isContained());
+#ifdef _TARGET_X86_
+    bool dividendIsLong = varTypeIsLong(dividend->TypeGet());
+    GenTree* dividendLo = nullptr;
+    GenTree* dividendHi = nullptr;
+
+    if (dividendIsLong)
+    {
+        // If dividend is a GT_LONG, the we need to make sure its lo and hi parts are not contained.
+        dividendLo = dividend->gtGetOp1();
+        dividendHi = dividend->gtGetOp2();
+
+        assert(!dividendLo->isContained());
+        assert(!dividendHi->isContained());
+        assert(divisor->IsCnsIntOrI());
+    }
+    else
+#endif
+    {
+        // dividend is not contained.
+        assert(!dividend->isContained());
+    }
 
     genConsumeOperands(treeNode->AsOp());
     if (varTypeIsFloating(targetType))
@@ -1329,22 +1369,44 @@ void CodeGen::genCodeForDivMod(GenTreeOp* treeNode)
     }
     else
     {
-        // dividend must be in RAX
+#ifdef _TARGET_X86_
+        if (dividendIsLong)
+        {
+            assert(dividendLo != nullptr && dividendHi != nullptr);
+
+            // dividendLo must be in RAX; dividendHi must be in RDX
+            if (dividendLo->gtRegNum != REG_EAX)
+            {
+                inst_RV_RV(INS_mov, REG_EAX, dividendLo->gtRegNum, targetType);
+            }
+            if (dividendHi->gtRegNum != REG_EDX)
+            {
+                inst_RV_RV(INS_mov, REG_EDX, dividendHi->gtRegNum, targetType);
+            }
+        }
+        else
+#endif
         if (dividend->gtRegNum != REG_RAX)
         {
+            // dividend must be in RAX
             inst_RV_RV(INS_mov, REG_RAX, dividend->gtRegNum, targetType);
         }
 
         // zero or sign extend rax to rdx
-        if (oper == GT_UMOD || oper == GT_UDIV)
+#ifdef _TARGET_X86_
+        if (!dividendIsLong)
+#endif
         {
-            instGen_Set_Reg_To_Zero(EA_PTRSIZE, REG_EDX);
-        }
-        else
-        {
-            emit->emitIns(INS_cdq, size);
-            // the cdq instruction writes RDX, So clear the gcInfo for RDX
-            gcInfo.gcMarkRegSetNpt(RBM_RDX);
+            if (oper == GT_UMOD || oper == GT_UDIV)
+            {
+                instGen_Set_Reg_To_Zero(EA_PTRSIZE, REG_EDX);
+            }
+            else
+            {
+                emit->emitIns(INS_cdq, size);
+                // the cdq instruction writes RDX, So clear the gcInfo for RDX
+                gcInfo.gcMarkRegSetNpt(RBM_RDX);
+            }
         }
 
         // Perform the 'targetType' (64-bit or 32-bit) divide instruction
@@ -2008,13 +2070,6 @@ void CodeGen::genCodeForTreeNode(GenTreePtr treeNode)
             break;
 
         case GT_CAST:
-#if !defined(_TARGET_64BIT_)
-            // We will NYI in DecomposeNode() if we are cast TO a long type, but we do not
-            // yet support casting FROM a long type either, and that's simpler to catch
-            // here.
-            NYI_IF(varTypeIsLong(treeNode->gtOp.gtOp1), "Casts from TYP_LONG");
-#endif // !defined(_TARGET_64BIT_)
-
             if (varTypeIsFloating(targetType) && varTypeIsFloating(treeNode->gtOp.gtOp1))
             {
                 // Casts float/double <--> double/float
@@ -2422,23 +2477,18 @@ void CodeGen::genCodeForTreeNode(GenTreePtr treeNode)
             // X86 Long comparison
             else if (varTypeIsLong(op1Type))
             {
-                // When not materializing the result in a register, the compare logic is generated
-                // when we generate the GT_JTRUE.
-                if (treeNode->gtRegNum != REG_NA)
-                {
-                    genCompareLong(treeNode);
-                }
-                else
-                {
-                    if ((treeNode->gtNext != nullptr) && (treeNode->gtNext->OperGet() != GT_JTRUE))
-                    {
-                        NYI("Long compare/reload/jtrue sequence");
-                    }
+#ifdef DEBUG
+                // The result of an unlowered long compare on a 32-bit target must either be
+                // a) materialized into a register, or
+                // b) unused.
+                //
+                // A long compare that has a result that is used but not materialized into a register should
+                // have been handled by Lowering::LowerCompare.
 
-                    // We generate the compare when we generate the GT_JTRUE, but we need to consume
-                    // the operands now.
-                    genConsumeOperands(treeNode->AsOp());
-                }
+                LIR::Use use;
+                assert((treeNode->gtRegNum != REG_NA) || !LIR::AsRange(compiler->compCurBB).TryGetUse(treeNode, &use));
+#endif
+                genCompareLong(treeNode);
             }
 #endif // !defined(_TARGET_64BIT_)
             else
@@ -2456,52 +2506,60 @@ void CodeGen::genCodeForTreeNode(GenTreePtr treeNode)
             assert(compiler->compCurBB->bbJumpKind == BBJ_COND);
 
 #if !defined(_TARGET_64BIT_)
-            // For long compares, we emit special logic
-            if (varTypeIsLong(cmp->gtGetOp1()))
-            {
-                genJTrueLong(cmp);
-            }
-            else
+            // Long-typed compares should have been handled by Lowering::LowerCompare.
+            assert(!varTypeIsLong(cmp->gtGetOp1()));
 #endif
+
+            // Get the "kind" and type of the comparison.  Note that whether it is an unsigned cmp
+            // is governed by a flag NOT by the inherent type of the node
+            // TODO-XArch-CQ: Check if we can use the currently set flags.
+            emitJumpKind jumpKind[2];
+            bool         branchToTrueLabel[2];
+            genJumpKindsForTree(cmp, jumpKind, branchToTrueLabel);
+
+            BasicBlock* skipLabel = nullptr;
+            if (jumpKind[0] != EJ_NONE)
             {
-                // Get the "kind" and type of the comparison.  Note that whether it is an unsigned cmp
-                // is governed by a flag NOT by the inherent type of the node
-                // TODO-XArch-CQ: Check if we can use the currently set flags.
-                emitJumpKind jumpKind[2];
-                bool         branchToTrueLabel[2];
-                genJumpKindsForTree(cmp, jumpKind, branchToTrueLabel);
-
-                BasicBlock* skipLabel = nullptr;
-                if (jumpKind[0] != EJ_NONE)
+                BasicBlock* jmpTarget;
+                if (branchToTrueLabel[0])
                 {
-                    BasicBlock* jmpTarget;
-                    if (branchToTrueLabel[0])
-                    {
-                        jmpTarget = compiler->compCurBB->bbJumpDest;
-                    }
-                    else
-                    {
-                        // This case arises only for ordered GT_EQ right now
-                        assert((cmp->gtOper == GT_EQ) && ((cmp->gtFlags & GTF_RELOP_NAN_UN) == 0));
-                        skipLabel = genCreateTempLabel();
-                        jmpTarget = skipLabel;
-                    }
-
-                    inst_JMP(jumpKind[0], jmpTarget);
+                    jmpTarget = compiler->compCurBB->bbJumpDest;
+                }
+                else
+                {
+                    // This case arises only for ordered GT_EQ right now
+                    assert((cmp->gtOper == GT_EQ) && ((cmp->gtFlags & GTF_RELOP_NAN_UN) == 0));
+                    skipLabel = genCreateTempLabel();
+                    jmpTarget = skipLabel;
                 }
 
-                if (jumpKind[1] != EJ_NONE)
-                {
-                    // the second conditional branch always has to be to the true label
-                    assert(branchToTrueLabel[1]);
-                    inst_JMP(jumpKind[1], compiler->compCurBB->bbJumpDest);
-                }
-
-                if (skipLabel != nullptr)
-                {
-                    genDefineTempLabel(skipLabel);
-                }
+                inst_JMP(jumpKind[0], jmpTarget);
             }
+
+            if (jumpKind[1] != EJ_NONE)
+            {
+                // the second conditional branch always has to be to the true label
+                assert(branchToTrueLabel[1]);
+                inst_JMP(jumpKind[1], compiler->compCurBB->bbJumpDest);
+            }
+
+            if (skipLabel != nullptr)
+            {
+                genDefineTempLabel(skipLabel);
+            }
+        }
+        break;
+
+        case GT_JCC:
+        {
+            GenTreeJumpCC* jcc = treeNode->AsJumpCC();
+
+            assert(compiler->compCurBB->bbJumpKind == BBJ_COND);
+
+            CompareKind compareKind = ((jcc->gtFlags & GTF_UNSIGNED) != 0) ? CK_UNSIGNED : CK_SIGNED;
+            emitJumpKind jumpKind   = genJumpKindForOper(jcc->gtCondition, compareKind);
+
+            inst_JMP(jumpKind, compiler->compCurBB->bbJumpDest);
         }
         break;
 
@@ -5191,7 +5249,7 @@ void CodeGen::genConsumeRegs(GenTree* tree)
         }
         else if (tree->OperGet() == GT_AND)
         {
-            // This is the special contained GT_AND that we created in Lowering::LowerCmp()
+            // This is the special contained GT_AND that we created in Lowering::TreeNodeInfoInitCmp()
             // Now we need to consume the operands of the GT_AND node.
             genConsumeOperands(tree->AsOp());
         }
@@ -6184,6 +6242,14 @@ void CodeGen::genCallInstruction(GenTreePtr node)
 
 #endif // defined(_TARGET_X86_)
 
+    if (call->IsTailCallViaHelper())
+    {
+        if (compiler->getNeedsGSSecurityCookie())
+        {
+            genEmitGSCookieCheck(true);
+        }
+    }
+
     if (target != nullptr)
     {
         if (target->isContainedIndir())
@@ -6996,8 +7062,6 @@ void CodeGen::genCompareLong(GenTreePtr treeNode)
 
     genConsumeOperands(tree);
 
-    assert(targetReg != REG_NA);
-
     GenTreePtr loOp1 = op1->gtGetOp1();
     GenTreePtr hiOp1 = op1->gtGetOp2();
     GenTreePtr loOp2 = op2->gtGetOp1();
@@ -7010,6 +7074,12 @@ void CodeGen::genCompareLong(GenTreePtr treeNode)
 
     // Emit the compare instruction
     getEmitter()->emitInsBinary(ins, cmpAttr, hiOp1, hiOp2);
+
+    // If the result is not being materialized in a register, we're done.
+    if (targetReg == REG_NA)
+    {
+        return;
+    }
 
     // Generate the first jump for the high compare
     CompareKind compareKind = ((tree->gtFlags & GTF_UNSIGNED) != 0) ? CK_UNSIGNED : CK_SIGNED;
@@ -7080,152 +7150,6 @@ void CodeGen::genCompareLong(GenTreePtr treeNode)
         inst_RV_RV(ins_Move_Extend(TYP_UBYTE, true), targetReg, targetReg, TYP_UBYTE, emitTypeSize(TYP_UBYTE));
         genProduceReg(tree);
     }
-}
-
-//------------------------------------------------------------------------
-// genJTrueLong: Generate code for comparing two longs on x86 for the case where the result
-// is not manifested in a register.
-//
-// Arguments:
-//    treeNode - the compare tree
-//
-// Return Value:
-//    None.
-// Comments:
-// For long compares, we need to compare the high parts of operands first, then the low parts.
-// We only have to do the low compare if the high parts of the operands are equal.
-//
-// In the case where the result of a rel-op is not realized in a register, we generate:
-//
-//    Opcode            x86 equivalent          Comment
-//    ------            --------------          -------
-//
-//    GT_LT; unsigned   cmp hiOp1,hiOp2
-//                      jb  trueLabel
-//                      ja  falseLabel
-//                      cmp loOp1,loOp2
-//                      jb  trueLabel
-//                      falseLabel:
-//
-//    GT_LE; unsigned   cmp hiOp1,hiOp2
-//                      jb  trueLabel
-//                      ja  falseLabel
-//                      cmp loOp1,loOp2
-//                      jbe trueLabel
-//                      falseLabel:
-//
-//    GT_GT; unsigned   cmp hiOp1,hiOp2
-//                      ja  trueLabel
-//                      jb  falseLabel
-//                      cmp loOp1,loOp2
-//                      ja  trueLabel
-//                      falseLabel:
-//
-//    GT_GE; unsigned   cmp hiOp1,hiOp2
-//                      ja  trueLabel
-//                      jb  falseLabel
-//                      cmp loOp1,loOp2
-//                      jae trueLabel
-//                      falseLabel:
-//
-//    GT_LT; signed     cmp hiOp1,hiOp2
-//                      jl  trueLabel
-//                      jg  falseLabel
-//                      cmp loOp1,loOp2
-//                      jb  trueLabel
-//                      falseLabel:
-//
-//    GT_LE; signed     cmp hiOp1,hiOp2
-//                      jl  trueLabel
-//                      jg  falseLabel
-//                      cmp loOp1,loOp2
-//                      jbe trueLabel
-//                      falseLabel:
-//
-//    GT_GT; signed     cmp hiOp1,hiOp2
-//                      jg  trueLabel
-//                      jl  falseLabel
-//                      cmp loOp1,loOp2
-//                      ja  trueLabel
-//                      falseLabel:
-//
-//    GT_GE; signed     cmp hiOp1,hiOp2
-//                      jg  trueLabel
-//                      jl  falseLabel
-//                      cmp loOp1,loOp2
-//                      jae trueLabel
-//                      falseLabel:
-//
-//    GT_EQ;            cmp hiOp1,hiOp2
-//                      jne falseLabel
-//                      cmp loOp1,loOp2
-//                      je  trueLabel
-//                      falseLabel:
-//
-//    GT_NE;            cmp hiOp1,hiOp2
-//                      jne labelTrue
-//                      cmp loOp1,loOp2
-//                      jne trueLabel
-//                      falseLabel:
-//
-// TODO-X86-CQ: Check if hi or lo parts of op2 are 0 and change the compare to a test.
-void CodeGen::genJTrueLong(GenTreePtr treeNode)
-{
-    assert(treeNode->OperIsCompare());
-
-    GenTreeOp* tree = treeNode->AsOp();
-    GenTreePtr op1  = tree->gtOp1;
-    GenTreePtr op2  = tree->gtOp2;
-
-    assert(varTypeIsLong(op1->TypeGet()));
-    assert(varTypeIsLong(op2->TypeGet()));
-
-    regNumber targetReg = treeNode->gtRegNum;
-
-    assert(targetReg == REG_NA);
-
-    GenTreePtr loOp1 = op1->gtGetOp1();
-    GenTreePtr hiOp1 = op1->gtGetOp2();
-    GenTreePtr loOp2 = op2->gtGetOp1();
-    GenTreePtr hiOp2 = op2->gtGetOp2();
-
-    // Emit the compare instruction
-    getEmitter()->emitInsBinary(INS_cmp, EA_4BYTE, hiOp1, hiOp2);
-
-    // Generate the first jump for the high compare
-    CompareKind compareKind = ((tree->gtFlags & GTF_UNSIGNED) != 0) ? CK_UNSIGNED : CK_SIGNED;
-
-    // TODO-X86-CQ: If the next block is a BBJ_ALWAYS, we can set falseLabel = compiler->compCurBB->bbNext->bbJumpDest.
-    BasicBlock* falseLabel = genCreateTempLabel();
-
-    emitJumpKind jumpKindHi[2];
-
-    // Generate the jumps for the high compare
-    genJumpKindsForTreeLongHi(tree, jumpKindHi);
-
-    BasicBlock* trueLabel = compiler->compCurBB->bbJumpDest;
-
-    if (jumpKindHi[0] != EJ_NONE)
-    {
-        inst_JMP(jumpKindHi[0], trueLabel);
-    }
-
-    if (jumpKindHi[1] != EJ_NONE)
-    {
-        inst_JMP(jumpKindHi[1], falseLabel);
-    }
-
-    // The low jump must be unsigned
-    emitJumpKind jumpKindLo = genJumpKindForOper(tree->gtOper, CK_UNSIGNED);
-
-    // Emit the comparison and the jump to the trueLabel
-    getEmitter()->emitInsBinary(INS_cmp, EA_4BYTE, loOp1, loOp2);
-
-    inst_JMP(jumpKindLo, trueLabel);
-
-    // Generate falseLabel, which is the false path. We will jump here if the high compare is false
-    // or fall through if the low compare is false.
-    genDefineTempLabel(falseLabel);
 }
 #endif //! defined(_TARGET_64BIT_)
 
@@ -7406,7 +7330,7 @@ void CodeGen::genCompareInt(GenTreePtr treeNode)
     {
         // Do we have a short compare against a constant in op2?
         //
-        // We checked for this case in LowerCmp() and if we can perform a small
+        // We checked for this case in TreeNodeInfoInitCmp() and if we can perform a small
         // compare immediate we labeled this compare with a GTF_RELOP_SMALL
         // and for unsigned small non-equality compares the GTF_UNSIGNED flag.
         //
@@ -7461,7 +7385,7 @@ void CodeGen::genCompareInt(GenTreePtr treeNode)
         if (op1->isContained())
         {
             // op1 can be a contained memory op
-            // or the special contained GT_AND that we created in Lowering::LowerCmp()
+            // or the special contained GT_AND that we created in Lowering::TreeNodeInfoInitCmp()
             //
             if ((op1->OperGet() == GT_AND))
             {
@@ -7580,6 +7504,93 @@ void CodeGen::genSetRegToCond(regNumber dstReg, GenTreePtr tree)
     }
 }
 
+#if !defined(_TARGET_64BIT_)
+//------------------------------------------------------------------------
+// genIntToIntCast: Generate code for long to int casts on x86.
+//
+// Arguments:
+//    cast - The GT_CAST node
+//
+// Return Value:
+//    None.
+//
+// Assumptions:
+//    The cast node and its sources (via GT_LONG) must have been assigned registers.
+//    The destination cannot be a floating point type or a small integer type.
+//
+void CodeGen::genLongToIntCast(GenTree* cast)
+{
+    assert(cast->OperGet() == GT_CAST);
+
+    GenTree* src = cast->gtGetOp1();
+    noway_assert(src->OperGet() == GT_LONG);
+
+    genConsumeRegs(src);
+
+    var_types srcType  = ((cast->gtFlags & GTF_UNSIGNED) != 0) ? TYP_ULONG : TYP_LONG;
+    var_types dstType  = cast->CastToType();
+    regNumber loSrcReg = src->gtGetOp1()->gtRegNum;
+    regNumber hiSrcReg = src->gtGetOp2()->gtRegNum;
+    regNumber dstReg   = cast->gtRegNum;
+
+    assert((dstType == TYP_INT) || (dstType == TYP_UINT));
+    assert(genIsValidIntReg(loSrcReg));
+    assert(genIsValidIntReg(hiSrcReg));
+    assert(genIsValidIntReg(dstReg));
+
+    if (cast->gtOverflow())
+    {
+        //
+        // Generate an overflow check for [u]long to [u]int casts:
+        //
+        // long  -> int  - check if the upper 33 bits are all 0 or all 1
+        // 
+        // ulong -> int  - check if the upper 33 bits are all 0
+        //
+        // long  -> uint - check if the upper 32 bits are all 0
+        // ulong -> uint - check if the upper 32 bits are all 0
+        //
+
+        if ((srcType == TYP_LONG) && (dstType == TYP_INT))
+        {
+            BasicBlock* allOne = genCreateTempLabel();
+            BasicBlock* success = genCreateTempLabel();
+
+            inst_RV_RV(INS_test, loSrcReg, loSrcReg, TYP_INT, EA_4BYTE);
+            inst_JMP(EJ_js, allOne);
+
+            inst_RV_RV(INS_test, hiSrcReg, hiSrcReg, TYP_INT, EA_4BYTE);
+            genJumpToThrowHlpBlk(EJ_jne, SCK_OVERFLOW);
+            inst_JMP(EJ_jmp, success);
+
+            genDefineTempLabel(allOne);
+            inst_RV_IV(INS_cmp, hiSrcReg, -1, EA_4BYTE);
+            genJumpToThrowHlpBlk(EJ_jne, SCK_OVERFLOW);
+
+            genDefineTempLabel(success);
+        }
+        else
+        {
+            if ((srcType == TYP_ULONG) && (dstType == TYP_INT))
+            {
+                inst_RV_RV(INS_test, loSrcReg, loSrcReg, TYP_INT, EA_4BYTE);
+                genJumpToThrowHlpBlk(EJ_js, SCK_OVERFLOW);
+            }
+
+            inst_RV_RV(INS_test, hiSrcReg, hiSrcReg, TYP_INT, EA_4BYTE);
+            genJumpToThrowHlpBlk(EJ_jne, SCK_OVERFLOW);
+        }
+    }
+    
+    if (dstReg != loSrcReg)
+    {
+        inst_RV_RV(INS_mov, dstReg, loSrcReg, TYP_INT, EA_4BYTE);
+    }
+
+    genProduceReg(cast);
+}
+#endif
+
 //------------------------------------------------------------------------
 // genIntToIntCast: Generate code for an integer cast
 //    This method handles integer overflow checking casts
@@ -7603,12 +7614,21 @@ void CodeGen::genIntToIntCast(GenTreePtr treeNode)
 {
     assert(treeNode->OperGet() == GT_CAST);
 
-    GenTreePtr castOp        = treeNode->gtCast.CastOp();
+    GenTreePtr castOp  = treeNode->gtCast.CastOp();
+    var_types  srcType = genActualType(castOp->TypeGet());
+
+#if !defined(_TARGET_64BIT_)
+    if (varTypeIsLong(srcType))
+    {
+        genLongToIntCast(treeNode);
+        return;
+    }
+#endif // !defined(_TARGET_64BIT_)
+
     regNumber  targetReg     = treeNode->gtRegNum;
     regNumber  sourceReg     = castOp->gtRegNum;
     var_types  dstType       = treeNode->CastToType();
     bool       isUnsignedDst = varTypeIsUnsigned(dstType);
-    var_types  srcType       = genActualType(castOp->TypeGet());
     bool       isUnsignedSrc = varTypeIsUnsigned(srcType);
 
     // if necessary, force the srcType to unsigned when the GT_UNSIGNED flag is set

@@ -323,6 +323,11 @@ void Lowering::TreeNodeInfoInit(GenTree* tree)
             l->clearDstCount(tree->gtOp.gtOp1);
             break;
 
+        case GT_JCC:
+            info->srcCount = 0;
+            info->dstCount = 0;
+            break;
+
         case GT_JMP:
             info->srcCount = 0;
             info->dstCount = 0;
@@ -501,7 +506,7 @@ void Lowering::TreeNodeInfoInit(GenTree* tree)
         case GT_LE:
         case GT_GE:
         case GT_GT:
-            LowerCmp(tree);
+            TreeNodeInfoInitCmp(tree);
             break;
 
         case GT_CKFINITE:
@@ -2202,8 +2207,26 @@ void Lowering::TreeNodeInfoInitModDiv(GenTree* tree)
         info->setDstCandidates(l, RBM_RAX);
     }
 
-    // If possible would like to have op1 in RAX to avoid a register move
-    op1->gtLsraInfo.setSrcCandidates(l, RBM_RAX);
+#ifdef _TARGET_X86_
+    if (op1->OperGet() == GT_LONG)
+    {
+        // To avoid reg move would like to have op1's low part in RAX and high part in RDX.
+        GenTree* loVal = op1->gtGetOp1();
+        GenTree* hiVal = op1->gtGetOp2();
+        
+        // Src count is actually 3, so increment.
+        assert(op2->IsCnsIntOrI());
+        info->srcCount++;
+
+        loVal->gtLsraInfo.setSrcCandidates(l, RBM_EAX);
+        hiVal->gtLsraInfo.setSrcCandidates(l, RBM_EDX);
+    }
+    else
+#endif
+    {
+        // If possible would like to have op1 in RAX to avoid a register move
+        op1->gtLsraInfo.setSrcCandidates(l, RBM_RAX);
+    }
 
     // divisor can be an r/m, but the memory indirection must be of the same size as the divide
     if (op2->isMemoryOp() && (op2->TypeGet() == tree->TypeGet()))
@@ -2876,7 +2899,7 @@ void Lowering::SetIndirAddrOpCounts(GenTreePtr indirTree)
     }
 }
 
-void Lowering::LowerCmp(GenTreePtr tree)
+void Lowering::TreeNodeInfoInitCmp(GenTreePtr tree)
 {
     TreeNodeInfo* info = &(tree->gtLsraInfo);
 
@@ -3242,7 +3265,7 @@ void Lowering::LowerCmp(GenTreePtr tree)
 #ifdef DEBUG
                         if (comp->verbose)
                         {
-                            printf("LowerCmp: Removing a GT_CAST to TYP_UBYTE and changing castOp1->gtType to "
+                            printf("TreeNodeInfoInitCmp: Removing a GT_CAST to TYP_UBYTE and changing castOp1->gtType to "
                                    "TYP_UBYTE\n");
                             comp->gtDispTreeRange(BlockRange(), tree);
                         }

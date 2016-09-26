@@ -6968,10 +6968,7 @@ void LinearScan::allocateRegisters()
             }
             else
             {
-                // This must be a localVar or a single-reg fixed use or a tree temp with conflicting def & use.
-
-                assert(currentInterval && (currentInterval->isLocalVar || currentRefPosition->isFixedRegRef ||
-                                           currentInterval->hasConflictingDefUse));
+                assert(currentInterval != nullptr);
 
                 // It's already in a register, but not one we need.
                 // If it is a fixed use that is not marked "delayRegFree", there is already a FixedReg to ensure that
@@ -8529,7 +8526,7 @@ void LinearScan::insertMove(
             noway_assert(!blockRange.IsEmpty());
 
             GenTree* branch = blockRange.LastNode();
-            assert(branch->OperGet() == GT_JTRUE || branch->OperGet() == GT_SWITCH_TABLE ||
+            assert(branch->OperIsConditionalJump() || branch->OperGet() == GT_SWITCH_TABLE ||
                    branch->OperGet() == GT_SWITCH);
 
             blockRange.InsertBefore(branch, std::move(treeRange));
@@ -8600,7 +8597,7 @@ void LinearScan::insertSwap(
             noway_assert(!blockRange.IsEmpty());
 
             GenTree* branch = blockRange.LastNode();
-            assert(branch->OperGet() == GT_JTRUE || branch->OperGet() == GT_SWITCH_TABLE ||
+            assert(branch->OperIsConditionalJump() || branch->OperGet() == GT_SWITCH_TABLE ||
                    branch->OperGet() == GT_SWITCH);
 
             blockRange.InsertBefore(branch, std::move(swapRange));

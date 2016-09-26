@@ -24,6 +24,10 @@ void genLeaInstruction(GenTreeAddrMode* lea);
 
 void genSetRegToCond(regNumber dstReg, GenTreePtr tree);
 
+#if !defined(_TARGET_64BIT_)
+void genLongToIntCast(GenTreePtr treeNode);
+#endif
+
 void genIntToIntCast(GenTreePtr treeNode);
 
 void genFloatToFloatCast(GenTreePtr treeNode);
@@ -49,7 +53,6 @@ void genCompareInt(GenTreePtr treeNode);
 
 #if !defined(_TARGET_64BIT_)
 void genCompareLong(GenTreePtr treeNode);
-void genJTrueLong(GenTreePtr treeNode);
 #endif
 
 #ifdef FEATURE_SIMD
