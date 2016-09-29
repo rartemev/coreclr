@@ -26,6 +26,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #ifdef _TARGET_ARM64_
 
 #include "jit.h"
+#include "sideeffects.h"
 #include "lower.h"
 
 // there is not much lowering to do with storing a local but
@@ -201,6 +202,7 @@ void Lowering::TreeNodeInfoInit(GenTree* tree)
             __fallthrough;
 
         case GT_LIST:
+        case GT_FIELD_LIST:
         case GT_ARGPLACE:
         case GT_NO_OP:
         case GT_START_NONGC:
@@ -976,7 +978,7 @@ void Lowering::TreeNodeInfoInitCall(GenTreeCall* call)
 
     for (GenTreePtr list = call->gtCallLateArgs; list; list = list->MoveNext())
     {
-        assert(list->IsList());
+        assert(list->OperIsList());
 
         GenTreePtr argNode = list->Current();
 
@@ -1002,16 +1004,16 @@ void Lowering::TreeNodeInfoInitCall(GenTreeCall* call)
 
         argNode = argNode->gtEffectiveVal();
 
-        // A GT_LIST has a TYP_VOID, but is used to represent a multireg struct
-        if (varTypeIsStruct(argNode) || (argNode->gtOper == GT_LIST))
+        // A GT_FIELD_LIST has a TYP_VOID, but is used to represent a multireg struct
+        if (varTypeIsStruct(argNode) || (argNode->gtOper == GT_FIELD_LIST))
         {
             GenTreePtr actualArgNode = argNode;
             unsigned   originalSize  = 0;
 
-            if (argNode->gtOper == GT_LIST)
+            if (argNode->gtOper == GT_FIELD_LIST)
             {
                 // There could be up to 2-4 PUTARG_REGs in the list (3 or 4 can only occur for HFAs)
-                GenTreeArgList* argListPtr = argNode->AsArgList();
+                GenTreeFieldList* fieldListPtr = argNode->AsFieldList();
 
                 // Initailize the first register and the first regmask in our list
                 regNumber targetReg    = argReg;
@@ -1019,9 +1021,9 @@ void Lowering::TreeNodeInfoInitCall(GenTreeCall* call)
                 unsigned  iterationNum = 0;
                 originalSize           = 0;
 
-                for (; argListPtr; argListPtr = argListPtr->Rest())
+                for (; fieldListPtr; fieldListPtr = fieldListPtr->Rest())
                 {
-                    GenTreePtr putArgRegNode = argListPtr->gtOp.gtOp1;
+                    GenTreePtr putArgRegNode = fieldListPtr->Current();
                     assert(putArgRegNode->gtOper == GT_PUTARG_REG);
                     GenTreePtr putArgChild = putArgRegNode->gtOp.gtOp1;
 
@@ -1165,14 +1167,14 @@ void Lowering::TreeNodeInfoInitPutArgStk(GenTree* argNode, fgArgTabEntryPtr info
     argNode->gtLsraInfo.srcCount = 1;
     argNode->gtLsraInfo.dstCount = 0;
 
-    // Do we have a TYP_STRUCT argument (or a GT_LIST), if so it must be a multireg pass-by-value struct
-    if ((putArgChild->TypeGet() == TYP_STRUCT) || (putArgChild->OperGet() == GT_LIST))
+    // Do we have a TYP_STRUCT argument (or a GT_FIELD_LIST), if so it must be a multireg pass-by-value struct
+    if ((putArgChild->TypeGet() == TYP_STRUCT) || (putArgChild->OperGet() == GT_FIELD_LIST))
     {
         // We will use store instructions that each write a register sized value
 
-        if (putArgChild->OperGet() == GT_LIST)
+        if (putArgChild->OperGet() == GT_FIELD_LIST)
         {
-            // We consume all of the items in the GT_LIST
+            // We consume all of the items in the GT_FIELD_LIST
             argNode->gtLsraInfo.srcCount = info->numSlots;
         }
         else
@@ -1281,7 +1283,7 @@ void Lowering::TreeNodeInfoInitBlockStore(GenTreeBlk* blkNode)
         else
 #endif // 0
         {
-            // The helper follows the regular AMD64 ABI.
+            // The helper follows the regular ABI.
             dstAddr->gtLsraInfo.setSrcCandidates(l, RBM_ARG_0);
             initVal->gtLsraInfo.setSrcCandidates(l, RBM_ARG_1);
             blkNode->gtBlkOpKind = GenTreeBlk::BlkOpKindHelper;
@@ -1305,9 +1307,9 @@ void Lowering::TreeNodeInfoInitBlockStore(GenTreeBlk* blkNode)
     {
         // CopyObj or CopyBlk
         // Sources are src and dest and size if not constant.
-        unsigned   size              = blkNode->gtBlkSize;
-        GenTreePtr source            = blkNode->Data();
-        GenTree*   srcAddr           = nullptr;
+        unsigned   size    = blkNode->gtBlkSize;
+        GenTreePtr source  = blkNode->Data();
+        GenTree*   srcAddr = nullptr;
 
         if (source->gtOper == GT_IND)
         {
@@ -1446,7 +1448,6 @@ void Lowering::TreeNodeInfoInitBlockStore(GenTreeBlk* blkNode)
                     noway_assert(blkNode->gtOper == GT_STORE_DYN_BLK);
                     blkNode->gtLsraInfo.setSrcCount(3);
                     GenTree* blockSize = blkNode->AsDynBlk()->gtDynamicSize;
-                    assert(!blockSize->IsIconHandle());
                     blockSize->gtLsraInfo.setSrcCandidates(l, RBM_ARG_2);
                 }
                 blkNode->gtBlkOpKind = GenTreeBlk::BlkOpKindHelper;
@@ -1735,7 +1736,7 @@ void Lowering::SetIndirAddrOpCounts(GenTreePtr indirTree)
     bool       rev;
     bool       modifiedSources = false;
 
-    if (addr->OperGet() == GT_LEA)
+    if ((addr->OperGet() == GT_LEA) && IsSafeToContainMem(indirTree, addr))
     {
         GenTreeAddrMode* lea = addr->AsAddrMode();
         base                 = lea->Base();
@@ -1748,7 +1749,7 @@ void Lowering::SetIndirAddrOpCounts(GenTreePtr indirTree)
         info->srcCount--;
     }
     else if (comp->codeGen->genCreateAddrMode(addr, -1, true, 0, &rev, &base, &index, &mul, &cns, true /*nogen*/) &&
-             !(modifiedSources = AreSourcesPossiblyModified(indirTree, base, index)))
+             !(modifiedSources = AreSourcesPossiblyModifiedLocals(indirTree, base, index)))
     {
         // An addressing mode will be constructed that may cause some
         // nodes to not need a register, and cause others' lifetimes to be extended

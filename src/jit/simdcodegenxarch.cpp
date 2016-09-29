@@ -20,6 +20,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #ifdef _TARGET_AMD64_
 #include "emit.h"
 #include "codegen.h"
+#include "sideeffects.h"
 #include "lower.h"
 #include "gcinfo.h"
 #include "gcinfoencoder.h"
@@ -1116,15 +1117,6 @@ void CodeGen::genSIMDIntrinsicRelOp(GenTreeSIMD* simdNode)
         {
             assert(genIsValidIntReg(targetReg));
 
-            // We need two additional XMM register as scratch
-            assert(simdNode->gtRsvdRegs != RBM_NONE);
-            assert(genCountBits(simdNode->gtRsvdRegs) == 2);
-
-            regMaskTP tmpRegsMask = simdNode->gtRsvdRegs;
-            regMaskTP tmpReg1Mask = genFindLowestBit(tmpRegsMask);
-            tmpRegsMask &= ~tmpReg1Mask;
-            regNumber tmpReg1  = genRegNumFromMask(tmpReg1Mask);
-            regNumber tmpReg2  = genRegNumFromMask(tmpRegsMask);
             var_types simdType = op1->TypeGet();
             // TODO-1stClassStructs: Temporary to minimize asmDiffs
             if (simdType == TYP_DOUBLE)
@@ -1139,91 +1131,113 @@ void CodeGen::genSIMDIntrinsicRelOp(GenTreeSIMD* simdNode)
                 simdType = TYP_SIMD16;
             }
 
-            // tmpReg1 = (op1Reg == op2Reg)
-            // Call this value of tmpReg1 as 'compResult' for further reference below.
-            regNumber otherReg = op2Reg;
-            if (tmpReg1 != op2Reg)
+            // On AVX, we can generate optimal code for (in)equality
+            // against zero.
+            if (compiler->canUseAVX() && op2->IsIntegralConstVector(0))
             {
-                if (tmpReg1 != op1Reg)
+                assert(op2->isContained());
+                inst_RV_RV(INS_ptest, op1->gtRegNum, op1->gtRegNum, simdType, emitActualTypeSize(simdType));
+            }
+            else
+            {
+
+                // We need two additional XMM register as scratch
+                assert(simdNode->gtRsvdRegs != RBM_NONE);
+                assert(genCountBits(simdNode->gtRsvdRegs) == 2);
+
+                regMaskTP tmpRegsMask = simdNode->gtRsvdRegs;
+                regMaskTP tmpReg1Mask = genFindLowestBit(tmpRegsMask);
+                tmpRegsMask &= ~tmpReg1Mask;
+                regNumber tmpReg1 = genRegNumFromMask(tmpReg1Mask);
+                regNumber tmpReg2 = genRegNumFromMask(tmpRegsMask);
+
+                // tmpReg1 = (op1Reg == op2Reg)
+                // Call this value of tmpReg1 as 'compResult' for further reference below.
+                regNumber otherReg = op2Reg;
+                if (tmpReg1 != op2Reg)
                 {
-                    inst_RV_RV(ins_Copy(simdType), tmpReg1, op1Reg, simdType, emitActualTypeSize(simdType));
+                    if (tmpReg1 != op1Reg)
+                    {
+                        inst_RV_RV(ins_Copy(simdType), tmpReg1, op1Reg, simdType, emitActualTypeSize(simdType));
+                    }
                 }
-            }
-            else
-            {
-                otherReg = op1Reg;
-            }
+                else
+                {
+                    otherReg = op1Reg;
+                }
 
-            // For all integer types we can use TYP_INT comparison.
-            unsigned    ival = 0;
-            instruction ins =
-                getOpForSIMDIntrinsic(SIMDIntrinsicEqual, varTypeIsFloating(baseType) ? baseType : TYP_INT, &ival);
+                // For all integer types we can use TYP_INT comparison.
+                unsigned    ival = 0;
+                instruction ins =
+                    getOpForSIMDIntrinsic(SIMDIntrinsicEqual, varTypeIsFloating(baseType) ? baseType : TYP_INT, &ival);
 
-            if (varTypeIsFloating(baseType))
-            {
-                getEmitter()->emitIns_R_R_I(ins, emitActualTypeSize(simdType), tmpReg1, otherReg, ival);
-            }
-            else
-            {
-                inst_RV_RV(ins, tmpReg1, otherReg, simdType, emitActualTypeSize(simdType));
-            }
+                if (varTypeIsFloating(baseType))
+                {
+                    getEmitter()->emitIns_R_R_I(ins, emitActualTypeSize(simdType), tmpReg1, otherReg, ival);
+                }
+                else
+                {
+                    inst_RV_RV(ins, tmpReg1, otherReg, simdType, emitActualTypeSize(simdType));
+                }
 
-            // If we have 32 bytes, start by anding the two 16-byte halves to get a 16-byte result.
-            if (compiler->canUseAVX() && (simdType == TYP_SIMD32))
-            {
-                // Reduce tmpReg1 from 256-bits to 128-bits bitwise-Anding the lower and uppper 128-bits
-                //
-                // Generated code sequence
-                // - vextractf128 tmpReg2, tmpReg1, 0x01
-                //       tmpReg2[128..255] <- 0
-                //       tmpReg2[0..127]   <- tmpReg1[128..255]
-                // - vandps tmpReg1, tempReg2
-                //       This will zero-out upper portion of tmpReg1 and
-                //       lower portion of tmpReg1 is and of upper and lower 128-bit comparison result.
-                getEmitter()->emitIns_R_R_I(INS_vextractf128, EA_32BYTE, tmpReg2, tmpReg1, 0x01);
-                inst_RV_RV(INS_andps, tmpReg1, tmpReg2, simdType, emitActualTypeSize(simdType));
-            }
-            // Next, if we have more than 8 bytes, and the two 8-byte halves to get a 8-byte result.
-            if (simdType != TYP_SIMD8)
-            {
-                // tmpReg2 = Shuffle(tmpReg1, (1,0,3,2))
-                // Note: vpshufd is a 128-bit only instruction. Therefore, explicitly pass EA_16BYTE
-                getEmitter()->emitIns_R_R_I(INS_pshufd, EA_16BYTE, tmpReg2, tmpReg1, 0x4E);
+                // If we have 32 bytes, start by anding the two 16-byte halves to get a 16-byte result.
+                if (compiler->canUseAVX() && (simdType == TYP_SIMD32))
+                {
+                    // Reduce tmpReg1 from 256-bits to 128-bits bitwise-Anding the lower and uppper 128-bits
+                    //
+                    // Generated code sequence
+                    // - vextractf128 tmpReg2, tmpReg1, 0x01
+                    //       tmpReg2[128..255] <- 0
+                    //       tmpReg2[0..127]   <- tmpReg1[128..255]
+                    // - vandps tmpReg1, tempReg2
+                    //       This will zero-out upper portion of tmpReg1 and
+                    //       lower portion of tmpReg1 is and of upper and lower 128-bit comparison result.
+                    getEmitter()->emitIns_R_R_I(INS_vextractf128, EA_32BYTE, tmpReg2, tmpReg1, 0x01);
+                    inst_RV_RV(INS_andps, tmpReg1, tmpReg2, simdType, emitActualTypeSize(simdType));
+                }
+                // Next, if we have more than 8 bytes, and the two 8-byte halves to get a 8-byte result.
+                if (simdType != TYP_SIMD8)
+                {
+                    // tmpReg2 = Shuffle(tmpReg1, (1,0,3,2))
+                    // Note: vpshufd is a 128-bit only instruction. Therefore, explicitly pass EA_16BYTE
+                    getEmitter()->emitIns_R_R_I(INS_pshufd, EA_16BYTE, tmpReg2, tmpReg1, 0x4E);
+
+                    // tmpReg1 = BitwiseAnd(tmpReg1, tmpReg2)
+                    //
+                    // Note that what we have computed is as follows at this point:
+                    // tmpReg1[0] = compResult[0] & compResult[2]
+                    // tmpReg1[1] = compResult[1] & compResult[3]
+                    inst_RV_RV(INS_andps, tmpReg1, tmpReg2, simdType, emitActualTypeSize(simdType));
+                }
+                // At this point, we have either reduced the result to 8 bytes: tmpReg1[0] and tmpReg1[1],
+                // OR we have a Vector2 (TYP_SIMD8) in tmpReg1, which has only those two fields.
+
+                // tmpReg2 = Shuffle(tmpReg1, (0,0,0,1))
+                // tmpReg2[0] = compResult[1] & compResult[3]
+                getEmitter()->emitIns_R_R_I(INS_pshufd, EA_16BYTE, tmpReg2, tmpReg1, 0x1);
 
                 // tmpReg1 = BitwiseAnd(tmpReg1, tmpReg2)
+                // That is tmpReg1[0] = compResult[0] & compResult[1] & compResult[2] & compResult[3]
+                inst_RV_RV(INS_pand, tmpReg1, tmpReg2, simdType, emitActualTypeSize(simdType)); // ??? INS_andps??
+
+                // targetReg = lower 32-bits of tmpReg1 = compResult[0] & compResult[1] & compResult[2] & compResult[3]
+                // (Note that for mov_xmm2i, the int register is always in the reg2 position.
+                inst_RV_RV(INS_mov_xmm2i, tmpReg1, targetReg, TYP_INT);
+
+                // Since we need to compute a bool result, targetReg needs to be set to 1 on true and zero on false.
+                // Equality:
+                //   cmp targetReg, 0xFFFFFFFF
+                //   sete targetReg
+                //   movzx targetReg, targetReg
                 //
-                // Note that what we have computed is as follows at this point:
-                // tmpReg1[0] = compResult[0] & compResult[2]
-                // tmpReg1[1] = compResult[1] & compResult[3]
-                inst_RV_RV(INS_andps, tmpReg1, tmpReg2, simdType, emitActualTypeSize(simdType));
+                // InEquality:
+                //   cmp targetReg, 0xFFFFFFFF
+                //   setne targetReg
+                //   movzx targetReg, targetReg
+                //
+                getEmitter()->emitIns_R_I(INS_cmp, EA_4BYTE, targetReg, 0xFFFFFFFF);
             }
-            // At this point, we have either reduced the result to 8 bytes: tmpReg1[0] and tmpReg1[1],
-            // OR we have a Vector2 (TYP_SIMD8) in tmpReg1, which has only those two fields.
 
-            // tmpReg2 = Shuffle(tmpReg1, (0,0,0,1))
-            // tmpReg2[0] = compResult[1] & compResult[3]
-            getEmitter()->emitIns_R_R_I(INS_pshufd, EA_16BYTE, tmpReg2, tmpReg1, 0x1);
-
-            // tmpReg1 = BitwiseAnd(tmpReg1, tmpReg2)
-            // That is tmpReg1[0] = compResult[0] & compResult[1] & compResult[2] & compResult[3]
-            inst_RV_RV(INS_pand, tmpReg1, tmpReg2, simdType, emitActualTypeSize(simdType)); // ??? INS_andps??
-
-            // targetReg = lower 32-bits of tmpReg1 = compResult[0] & compResult[1] & compResult[2] & compResult[3]
-            // (Note that for mov_xmm2i, the int register is always in the reg2 position.
-            inst_RV_RV(INS_mov_xmm2i, tmpReg1, targetReg, TYP_INT);
-
-            // Since we need to compute a bool result, targetReg needs to be set to 1 on true and zero on false.
-            // Equality:
-            //   cmp targetReg, 0xFFFFFFFF
-            //   sete targetReg
-            //   movzx targetReg, targetReg
-            //
-            // InEquality:
-            //   cmp targetReg, 0xFFFFFFFF
-            //   setne targetReg
-            //   movzx targetReg, targetReg
-            //
-            getEmitter()->emitIns_R_I(INS_cmp, EA_4BYTE, targetReg, 0xFFFFFFFF);
             inst_RV((simdNode->gtSIMDIntrinsicID == SIMDIntrinsicOpEquality) ? INS_sete : INS_setne, targetReg, TYP_INT,
                     EA_1BYTE);
             assert(simdNode->TypeGet() == TYP_INT);
@@ -1282,24 +1296,9 @@ void CodeGen::genSIMDIntrinsicDotProduct(GenTreeSIMD* simdNode)
     if ((compiler->getSIMDInstructionSet() == InstructionSet_SSE2) || (simdEvalType == TYP_SIMD32))
     {
         assert(simdNode->gtRsvdRegs != RBM_NONE);
-        assert(genCountBits(simdNode->gtRsvdRegs) == 2);
+        assert(genCountBits(simdNode->gtRsvdRegs) == 1);
 
-        regMaskTP tmpRegsMask = simdNode->gtRsvdRegs;
-        regMaskTP tmpReg1Mask = genFindLowestBit(tmpRegsMask);
-        tmpRegsMask &= ~tmpReg1Mask;
-        regNumber tmpReg1 = genRegNumFromMask(tmpReg1Mask);
-        regNumber tmpReg2 = genRegNumFromMask(tmpRegsMask);
-
-        // Choose any register different from targetReg as tmpReg
-        if (tmpReg1 != targetReg)
-        {
-            tmpReg = tmpReg1;
-        }
-        else
-        {
-            assert(targetReg != tmpReg2);
-            tmpReg = tmpReg2;
-        }
+        tmpReg = genRegNumFromMask(simdNode->gtRsvdRegs);
         assert(tmpReg != REG_NA);
         assert(tmpReg != targetReg);
     }
@@ -1454,6 +1453,59 @@ void CodeGen::genSIMDIntrinsicGetItem(GenTreeSIMD* simdNode)
     // - the index of the value to be returned.
     genConsumeOperands(simdNode);
     regNumber srcReg = op1->gtRegNum;
+
+    // Optimize the case of op1 is in memory and trying to access ith element.
+    if (op1->isMemoryOp())
+    {
+        assert(op1->isContained());
+
+        regNumber baseReg;
+        regNumber indexReg;
+        int       offset = 0;
+
+        if (op1->OperGet() == GT_LCL_FLD)
+        {
+            // There are three parts to the total offset here:
+            // {offset of local} + {offset of SIMD Vector field} + {offset of element within SIMD vector}.
+            bool     isEBPbased;
+            unsigned varNum = op1->gtLclVarCommon.gtLclNum;
+            offset += compiler->lvaFrameAddress(varNum, &isEBPbased);
+            offset += op1->gtLclFld.gtLclOffs;
+
+            baseReg = (isEBPbased) ? REG_EBP : REG_ESP;
+        }
+        else
+        {
+            // Require GT_IND addr to be not contained.
+            assert(op1->OperGet() == GT_IND);
+
+            GenTree* addr = op1->AsIndir()->Addr();
+            assert(!addr->isContained());
+            baseReg = addr->gtRegNum;
+        }
+
+        if (op2->isContainedIntOrIImmed())
+        {
+            indexReg = REG_NA;
+            offset += (int)op2->AsIntConCommon()->IconValue() * genTypeSize(baseType);
+        }
+        else
+        {
+            indexReg = op2->gtRegNum;
+            assert(genIsValidIntReg(indexReg));
+        }
+
+        // Now, load the desired element.
+        getEmitter()->emitIns_R_ARX(ins_Move_Extend(baseType, false), // Load
+                                    emitTypeSize(baseType),           // Of the vector baseType
+                                    targetReg,                        // To targetReg
+                                    baseReg,                          // Base Reg
+                                    indexReg,                         // Indexed
+                                    genTypeSize(baseType),            // by the size of the baseType
+                                    offset);
+        genProduceReg(simdNode);
+        return;
+    }
 
     // SSE2 doesn't have an instruction to implement this intrinsic if the index is not a constant.
     // For the non-constant case, we will use the SIMD temp location to store the vector, and
@@ -1838,26 +1890,9 @@ void CodeGen::genLoadIndTypeSIMD12(GenTree* treeNode)
 
     // Need an addtional Xmm register to read upper 4 bytes, which is different from targetReg
     assert(treeNode->gtRsvdRegs != RBM_NONE);
-    assert(genCountBits(treeNode->gtRsvdRegs) == 2);
+    assert(genCountBits(treeNode->gtRsvdRegs) == 1);
 
-    regNumber tmpReg      = REG_NA;
-    regMaskTP tmpRegsMask = treeNode->gtRsvdRegs;
-    regMaskTP tmpReg1Mask = genFindLowestBit(tmpRegsMask);
-    tmpRegsMask &= ~tmpReg1Mask;
-    regNumber tmpReg1 = genRegNumFromMask(tmpReg1Mask);
-    regNumber tmpReg2 = genRegNumFromMask(tmpRegsMask);
-
-    // Choose any register different from targetReg as tmpReg
-    if (tmpReg1 != targetReg)
-    {
-        tmpReg = tmpReg1;
-    }
-    else
-    {
-        assert(targetReg != tmpReg2);
-        tmpReg = tmpReg2;
-    }
-    assert(tmpReg != REG_NA);
+    regNumber tmpReg = genRegNumFromMask(treeNode->gtRsvdRegs);
     assert(tmpReg != targetReg);
 
     // Load upper 4 bytes in tmpReg
@@ -1930,28 +1965,12 @@ void CodeGen::genLoadLclFldTypeSIMD12(GenTree* treeNode)
     unsigned  varNum    = treeNode->gtLclVarCommon.gtLclNum;
     assert(varNum < compiler->lvaCount);
 
-    // Need an addtional Xmm register to read upper 4 bytes
+    // Need an addtional Xmm register that is different from
+    // targetReg to read upper 4 bytes.
     assert(treeNode->gtRsvdRegs != RBM_NONE);
-    assert(genCountBits(treeNode->gtRsvdRegs) == 2);
+    assert(genCountBits(treeNode->gtRsvdRegs) == 1);
 
-    regNumber tmpReg      = REG_NA;
-    regMaskTP tmpRegsMask = treeNode->gtRsvdRegs;
-    regMaskTP tmpReg1Mask = genFindLowestBit(tmpRegsMask);
-    tmpRegsMask &= ~tmpReg1Mask;
-    regNumber tmpReg1 = genRegNumFromMask(tmpReg1Mask);
-    regNumber tmpReg2 = genRegNumFromMask(tmpRegsMask);
-
-    // Choose any register different from targetReg as tmpReg
-    if (tmpReg1 != targetReg)
-    {
-        tmpReg = tmpReg1;
-    }
-    else
-    {
-        assert(targetReg != tmpReg2);
-        tmpReg = tmpReg2;
-    }
-    assert(tmpReg != REG_NA);
+    regNumber tmpReg = genRegNumFromMask(treeNode->gtRsvdRegs);
     assert(tmpReg != targetReg);
 
     // Read upper 4 bytes to tmpReg

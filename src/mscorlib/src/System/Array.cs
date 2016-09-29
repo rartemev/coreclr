@@ -1987,6 +1987,7 @@ namespace System {
 #endif
             }
 
+#if !FEATURE_CORECLR
             private void DepthLimitedQuickSort(int left, int right, int depthLimit)
             {
                 // Can use the much faster jit helpers for array access.
@@ -2084,6 +2085,7 @@ namespace System {
                     }
                 } while (left < right);
             }
+#endif
 
             private void IntrospectiveSort(int left, int length)
             {
@@ -2306,6 +2308,7 @@ namespace System {
 #endif
             }
 
+#if !FEATURE_CORECLR
             private void DepthLimitedQuickSort(int left, int right, int depthLimit)
             {
                 // Must use slow Array accessors (GetValue & SetValue)
@@ -2401,6 +2404,7 @@ namespace System {
                     }
                 } while (left < right);
             }
+#endif
 
             private void IntrospectiveSort(int left, int length)
             {
@@ -2795,7 +2799,7 @@ namespace System {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
             T[] _this = JitHelpers.UnsafeCast<T[]>(this);
-            return Array.IndexOf(_this, value) != -1;
+            return Array.IndexOf(_this, value, 0, _this.Length) >= 0;
         }
         
         bool get_IsReadOnly<T>() {
@@ -2814,7 +2818,7 @@ namespace System {
             //! Warning: "this" is an array, not an SZArrayHelper. See comments above
             //! or you may introduce a security hole!
             T[] _this = JitHelpers.UnsafeCast<T[]>(this);
-            return Array.IndexOf(_this, value);
+            return Array.IndexOf(_this, value, 0, _this.Length);
         }
         
         void Insert<T>(int index, T value) {

@@ -232,6 +232,15 @@ unsigned  genTreeNsizHistBuckets[] = {1000, 5000, 10000, 50000, 100000, 500000, 
 Histogram genTreeNsizHist(HostAllocator::getHostAllocator(), genTreeNsizHistBuckets);
 #endif // MEASURE_NODE_SIZE
 
+/*****************************************************************************/
+#if MEASURE_MEM_ALLOC
+
+unsigned  memSizeHistBuckets[] = {20, 50, 75, 100, 150, 250, 500, 1000, 5000, 0};
+Histogram memAllocHist(HostAllocator::getHostAllocator(), memSizeHistBuckets);
+Histogram memUsedHist(HostAllocator::getHostAllocator(), memSizeHistBuckets);
+
+#endif // MEASURE_MEM_ALLOC
+
 /*****************************************************************************
  *
  *  Variables to keep track of total code amounts.
@@ -1186,6 +1195,10 @@ void Compiler::compShutdown()
     }
 #endif
 
+#if NODEBASH_STATS
+    GenTree::ReportOperBashing(jitstdout);
+#endif
+
     // Where should we write our statistics output?
     FILE* fout = jitstdout;
 
@@ -1215,6 +1228,63 @@ void Compiler::compShutdown()
         fprintf(fout, "Removed %u of %u range checks\n", optRangeChkRmv, optRangeChkAll);
     }
 #endif // COUNT_RANGECHECKS
+
+#if COUNT_AST_OPERS
+
+    // Add up all the counts so that we can show percentages of total
+    unsigned gtc = 0;
+    for (unsigned op = 0; op < GT_COUNT; op++)
+        gtc += GenTree::s_gtNodeCounts[op];
+
+    if (gtc > 0)
+    {
+        unsigned rem_total = gtc;
+        unsigned rem_large = 0;
+        unsigned rem_small = 0;
+
+        unsigned tot_large = 0;
+        unsigned tot_small = 0;
+
+        fprintf(fout, "\nGenTree operator counts (approximate):\n\n");
+
+        for (unsigned op = 0; op < GT_COUNT; op++)
+        {
+            unsigned siz = GenTree::s_gtTrueSizes[op];
+            unsigned cnt = GenTree::s_gtNodeCounts[op];
+            double   pct = 100.0 * cnt / gtc;
+
+            if (siz > TREE_NODE_SZ_SMALL)
+                tot_large += cnt;
+            else
+                tot_small += cnt;
+
+            // Let's not show anything below a threshold
+            if (pct >= 0.5)
+            {
+                fprintf(fout, "    GT_%-17s   %7u (%4.1lf%%) %3u bytes each\n", GenTree::OpName((genTreeOps)op), cnt,
+                        pct, siz);
+                rem_total -= cnt;
+            }
+            else
+            {
+                if (siz > TREE_NODE_SZ_SMALL)
+                    rem_large += cnt;
+                else
+                    rem_small += cnt;
+            }
+        }
+        if (rem_total > 0)
+        {
+            fprintf(fout, "    All other GT_xxx ...   %7u (%4.1lf%%) ... %4.1lf%% small + %4.1lf%% large\n", rem_total,
+                    100.0 * rem_total / gtc, 100.0 * rem_small / gtc, 100.0 * rem_large / gtc);
+        }
+        fprintf(fout, "    -----------------------------------------------------\n");
+        fprintf(fout, "    Total    .......   %11u --ALL-- ... %4.1lf%% small + %4.1lf%% large\n", gtc,
+                100.0 * tot_small / gtc, 100.0 * tot_large / gtc);
+        fprintf(fout, "\n");
+    }
+
+#endif // COUNT_AST_OPERS
 
 #if DISPLAY_SIZES
 
@@ -1376,6 +1446,16 @@ void Compiler::compShutdown()
 
         fprintf(fout, "\nLargest method:\n");
         s_maxCompMemStats.Print(jitstdout);
+
+        fprintf(fout, "\n");
+        fprintf(fout, "---------------------------------------------------\n");
+        fprintf(fout, "Distribution of total memory allocated per method (in KB):\n");
+        memAllocHist.dump(fout);
+
+        fprintf(fout, "\n");
+        fprintf(fout, "---------------------------------------------------\n");
+        fprintf(fout, "Distribution of total memory used      per method (in KB):\n");
+        memUsedHist.dump(fout);
     }
 
 #endif // MEASURE_MEM_ALLOC
@@ -1450,112 +1530,8 @@ void Compiler::compDisplayStaticSizes(FILE* fout)
 {
 
 #if MEASURE_NODE_SIZE
-    /*
-        IMPORTANT:  Use the following code to check the alignment of
-                    GenTree members (in a retail build, of course).
-     */
-
-    GenTree* gtDummy = nullptr;
-
-    fprintf(fout, "\n");
-    fprintf(fout, "Offset / size of gtOper         = %2u / %2u\n", offsetof(GenTree, gtOper), sizeof(gtDummy->gtOper));
-    fprintf(fout, "Offset / size of gtType         = %2u / %2u\n", offsetof(GenTree, gtType), sizeof(gtDummy->gtType));
-#if FEATURE_ANYCSE
-    fprintf(fout, "Offset / size of gtCSEnum       = %2u / %2u\n", offsetof(GenTree, gtCSEnum),
-            sizeof(gtDummy->gtCSEnum));
-#endif // FEATURE_ANYCSE
-#if ASSERTION_PROP
-    fprintf(fout, "Offset / size of gtAssertionNum = %2u / %2u\n", offsetof(GenTree, gtAssertionNum),
-            sizeof(gtDummy->gtAssertionNum));
-#endif // ASSERTION_PROP
-#if FEATURE_STACK_FP_X87
-    fprintf(fout, "Offset / size of gtFPlvl        = %2u / %2u\n", offsetof(GenTree, gtFPlvl),
-            sizeof(gtDummy->gtFPlvl));
-#endif // FEATURE_STACK_FP_X87
-    // TODO: The section that report GenTree sizes should be made into a public static member function of the GenTree
-    // class (see https://github.com/dotnet/coreclr/pull/493)
-    // fprintf(fout, "Offset / size of gtCostEx       = %2u / %2u\n", offsetof(GenTree, _gtCostEx     ),
-    // sizeof(gtDummy->_gtCostEx     ));
-    // fprintf(fout, "Offset / size of gtCostSz       = %2u / %2u\n", offsetof(GenTree, _gtCostSz     ),
-    // sizeof(gtDummy->_gtCostSz     ));
-    fprintf(fout, "Offset / size of gtFlags        = %2u / %2u\n", offsetof(GenTree, gtFlags),
-            sizeof(gtDummy->gtFlags));
-    fprintf(fout, "Offset / size of gtVNPair       = %2u / %2u\n", offsetof(GenTree, gtVNPair),
-            sizeof(gtDummy->gtVNPair));
-    fprintf(fout, "Offset / size of gtRsvdRegs     = %2u / %2u\n", offsetof(GenTree, gtRsvdRegs),
-            sizeof(gtDummy->gtRsvdRegs));
-#ifdef LEGACY_BACKEND
-    fprintf(fout, "Offset / size of gtUsedRegs     = %2u / %2u\n", offsetof(GenTree, gtUsedRegs),
-            sizeof(gtDummy->gtUsedRegs));
-#endif // LEGACY_BACKEND
-#ifndef LEGACY_BACKEND
-    fprintf(fout, "Offset / size of gtLsraInfo     = %2u / %2u\n", offsetof(GenTree, gtLsraInfo),
-            sizeof(gtDummy->gtLsraInfo));
-#endif // !LEGACY_BACKEND
-    fprintf(fout, "Offset / size of gtNext         = %2u / %2u\n", offsetof(GenTree, gtNext), sizeof(gtDummy->gtNext));
-    fprintf(fout, "Offset / size of gtPrev         = %2u / %2u\n", offsetof(GenTree, gtPrev), sizeof(gtDummy->gtPrev));
-    fprintf(fout, "\n");
-
-#if SMALL_TREE_NODES
-    fprintf(fout, "Small tree node size        = %3u\n", TREE_NODE_SZ_SMALL);
-#endif // SMALL_TREE_NODES
-    fprintf(fout, "Large tree node size        = %3u\n", TREE_NODE_SZ_LARGE);
-    fprintf(fout, "\n");
-    fprintf(fout, "Size of GenTree             = %3u\n", sizeof(GenTree));
-    fprintf(fout, "Size of GenTreeUnOp         = %3u\n", sizeof(GenTreeUnOp));
-    fprintf(fout, "Size of GenTreeOp           = %3u\n", sizeof(GenTreeOp));
-    fprintf(fout, "Size of GenTreeVal          = %3u\n", sizeof(GenTreeVal));
-    fprintf(fout, "Size of GenTreeIntConCommon = %3u\n", sizeof(GenTreeIntConCommon));
-    fprintf(fout, "Size of GenTreePhysReg      = %3u\n", sizeof(GenTreePhysReg));
-#ifndef LEGACY_BACKEND
-    fprintf(fout, "Size of GenTreeJumpTable    = %3u\n", sizeof(GenTreeJumpTable));
-#endif // !LEGACY_BACKEND
-    fprintf(fout, "Size of GenTreeIntCon       = %3u\n", sizeof(GenTreeIntCon));
-    fprintf(fout, "Size of GenTreeLngCon       = %3u\n", sizeof(GenTreeLngCon));
-    fprintf(fout, "Size of GenTreeDblCon       = %3u\n", sizeof(GenTreeDblCon));
-    fprintf(fout, "Size of GenTreeStrCon       = %3u\n", sizeof(GenTreeStrCon));
-    fprintf(fout, "Size of GenTreeLclVarCommon = %3u\n", sizeof(GenTreeLclVarCommon));
-    fprintf(fout, "Size of GenTreeLclVar       = %3u\n", sizeof(GenTreeLclVar));
-    fprintf(fout, "Size of GenTreeLclFld       = %3u\n", sizeof(GenTreeLclFld));
-    fprintf(fout, "Size of GenTreeRegVar       = %3u\n", sizeof(GenTreeRegVar));
-    fprintf(fout, "Size of GenTreeCast         = %3u\n", sizeof(GenTreeCast));
-    fprintf(fout, "Size of GenTreeBox          = %3u\n", sizeof(GenTreeBox));
-    fprintf(fout, "Size of GenTreeField        = %3u\n", sizeof(GenTreeField));
-    fprintf(fout, "Size of GenTreeArgList      = %3u\n", sizeof(GenTreeArgList));
-    fprintf(fout, "Size of GenTreeColon        = %3u\n", sizeof(GenTreeColon));
-    fprintf(fout, "Size of GenTreeCall         = %3u\n", sizeof(GenTreeCall));
-    fprintf(fout, "Size of GenTreeCmpXchg      = %3u\n", sizeof(GenTreeCmpXchg));
-    fprintf(fout, "Size of GenTreeFptrVal      = %3u\n", sizeof(GenTreeFptrVal));
-    fprintf(fout, "Size of GenTreeQmark        = %3u\n", sizeof(GenTreeQmark));
-    fprintf(fout, "Size of GenTreeIntrinsic    = %3u\n", sizeof(GenTreeIntrinsic));
-    fprintf(fout, "Size of GenTreeIndex        = %3u\n", sizeof(GenTreeIndex));
-    fprintf(fout, "Size of GenTreeArrLen       = %3u\n", sizeof(GenTreeArrLen));
-    fprintf(fout, "Size of GenTreeBoundsChk    = %3u\n", sizeof(GenTreeBoundsChk));
-    fprintf(fout, "Size of GenTreeArrElem      = %3u\n", sizeof(GenTreeArrElem));
-    fprintf(fout, "Size of GenTreeAddrMode     = %3u\n", sizeof(GenTreeAddrMode));
-    fprintf(fout, "Size of GenTreeIndir        = %3u\n", sizeof(GenTreeIndir));
-    fprintf(fout, "Size of GenTreeStoreInd     = %3u\n", sizeof(GenTreeStoreInd));
-    fprintf(fout, "Size of GenTreeRetExpr      = %3u\n", sizeof(GenTreeRetExpr));
-    fprintf(fout, "Size of GenTreeStmt         = %3u\n", sizeof(GenTreeStmt));
-    fprintf(fout, "Size of GenTreeObj          = %3u\n", sizeof(GenTreeObj));
-    fprintf(fout, "Size of GenTreeClsVar       = %3u\n", sizeof(GenTreeClsVar));
-    fprintf(fout, "Size of GenTreeArgPlace     = %3u\n", sizeof(GenTreeArgPlace));
-    fprintf(fout, "Size of GenTreeLabel        = %3u\n", sizeof(GenTreeLabel));
-    fprintf(fout, "Size of GenTreePhiArg       = %3u\n", sizeof(GenTreePhiArg));
-    fprintf(fout, "Size of GenTreePutArgStk    = %3u\n", sizeof(GenTreePutArgStk));
-    fprintf(fout, "Size of GenTreeCopyOrReload = %3u\n", sizeof(GenTreeCopyOrReload));
-    fprintf(fout, "Size of GenTreeAllocObj     = %3u\n", sizeof(GenTreeAllocObj));
-    fprintf(fout, "Size of GenTreeBlkOp        = %3u\n", sizeof(GenTreeBlkOp));
-    fprintf(fout, "Size of GenTreeCpBlk        = %3u\n", sizeof(GenTreeCpBlk));
-    fprintf(fout, "Size of GenTreeCpObj        = %3u\n", sizeof(GenTreeCpObj));
-    fprintf(fout, "Size of GenTreeArrIndex     = %3u\n", sizeof(GenTreeArrIndex));
-    fprintf(fout, "Size of GenTreeArrOffs      = %3u\n", sizeof(GenTreeArrOffs));
-    fprintf(fout, "Size of GenTreeInitBlk      = %3u\n", sizeof(GenTreeInitBlk));
-#ifdef FEATURE_SIMD
-    fprintf(fout, "Size of GenTreeSIMD         = %3u\n", sizeof(GenTreeSIMD));
+    GenTree::DumpNodeSizes(fout);
 #endif
-    fprintf(fout, "\n");
-#endif // MEASURE_NODE_SIZE
 
 #if MEASURE_BLOCK_SIZE
 
@@ -1582,8 +1558,6 @@ void Compiler::compDisplayStaticSizes(FILE* fout)
             sizeof(bbDummy->bbJumpDest));
     fprintf(fout, "Offset / size of bbJumpSwt             = %3u / %3u\n", offsetof(BasicBlock, bbJumpSwt),
             sizeof(bbDummy->bbJumpSwt));
-    fprintf(fout, "Offset / size of bbTreeList            = %3u / %3u\n", offsetof(BasicBlock, bbTreeList),
-            sizeof(bbDummy->bbTreeList));
     fprintf(fout, "Offset / size of bbEntryState          = %3u / %3u\n", offsetof(BasicBlock, bbEntryState),
             sizeof(bbDummy->bbEntryState));
     fprintf(fout, "Offset / size of bbStkTempsIn          = %3u / %3u\n", offsetof(BasicBlock, bbStkTempsIn),
@@ -4120,6 +4094,8 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, CORJIT_F
         fgRemovePreds();
     }
 
+    EndPhase(PHASE_IMPORTATION);
+
     if (compIsForInlining())
     {
         /* Quit inlining if fgImport() failed for any reason. */
@@ -4137,8 +4113,6 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, CORJIT_F
     }
 
     assert(!compDonotInline());
-
-    EndPhase(PHASE_IMPORTATION);
 
     // Maybe the caller was not interested in generating code
     if (compIsForImportOnly())
@@ -4188,7 +4162,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, CORJIT_F
     /* Massage the trees so that we can generate code out of them */
 
     fgMorph();
-    EndPhase(PHASE_MORPH);
+    EndPhase(PHASE_MORPH_END);
 
     /* GS security checks for unsafe buffers */
     if (getNeedsGSSecurityCookie())
@@ -4548,7 +4522,9 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, CORJIT_F
 
 #ifdef FEATURE_JIT_METHOD_PERF
     if (pCompJitTimer)
+    {
         pCompJitTimer->Terminate(this, CompTimeSummaryInfo::s_compTimeSummary);
+    }
 #endif
 
     RecordStateAtEndOfCompilation();
@@ -4721,13 +4697,13 @@ int Compiler::compCompile(CORINFO_METHOD_HANDLE methodHnd,
 
         checkedForJitTimeLog = true;
     }
-    if ((Compiler::compJitTimeLogFilename != NULL) || (JitTimeLogCsv() != NULL))
+    if ((Compiler::compJitTimeLogFilename != nullptr) || (JitTimeLogCsv() != nullptr))
     {
         pCompJitTimer = JitTimer::Create(this, methodInfo->ILCodeSize);
     }
     else
     {
-        pCompJitTimer = NULL;
+        pCompJitTimer = nullptr;
     }
 #endif // FEATURE_JIT_METHOD_PERF
 
@@ -5008,6 +4984,8 @@ void Compiler::compCompileFinish()
         // Make the updates.
         genMemStats.nraTotalSizeAlloc = compGetAllocator()->getTotalBytesAllocated();
         genMemStats.nraTotalSizeUsed  = compGetAllocator()->getTotalBytesUsed();
+        memAllocHist.record((unsigned)((genMemStats.nraTotalSizeAlloc + 1023) / 1024));
+        memUsedHist.record((unsigned)((genMemStats.nraTotalSizeUsed + 1023) / 1024));
         s_aggMemStats.Add(genMemStats);
         if (genMemStats.allocSz > s_maxCompMemStats.allocSz)
         {
@@ -7008,7 +6986,9 @@ bool CompTimeSummaryInfo::IncludedInFilteredData(CompTimeInfo& info)
 void CompTimeSummaryInfo::AddInfo(CompTimeInfo& info)
 {
     if (info.m_timerFailure)
+    {
         return; // Don't update if there was a failure.
+    }
 
     CritSecHolder timeLock(s_compTimeSummaryLock);
     m_numMethods++;
@@ -7045,12 +7025,14 @@ void CompTimeSummaryInfo::AddInfo(CompTimeInfo& info)
 }
 
 // Static
-LPCWSTR Compiler::compJitTimeLogFilename = NULL;
+LPCWSTR Compiler::compJitTimeLogFilename = nullptr;
 
 void CompTimeSummaryInfo::Print(FILE* f)
 {
-    if (f == NULL)
+    if (f == nullptr)
+    {
         return;
+    }
     // Otherwise...
     double countsPerSec = CycleTimer::CyclesPerSecond();
     if (countsPerSec == 0.0)
@@ -7099,7 +7081,8 @@ void CompTimeSummaryInfo::Print(FILE* f)
         double pslop_pct = 100.0 * m_total.m_parentPhaseEndSlop * 1000.0 / countsPerSec / totTime_ms;
         if (pslop_pct >= 1.0)
         {
-            fprintf(f, "\n  'End phase slop' should be very small (if not, there's unattributed time): %9.3f Mcycles = %3.1f%% of total.\n\n",
+            fprintf(f, "\n  'End phase slop' should be very small (if not, there's unattributed time): %9.3f Mcycles = "
+                       "%3.1f%% of total.\n\n",
                     m_total.m_parentPhaseEndSlop / 1000000.0, pslop_pct);
         }
     }
@@ -7139,8 +7122,9 @@ void CompTimeSummaryInfo::Print(FILE* f)
         double fslop_ms = m_filtered.m_parentPhaseEndSlop * 1000.0 / countsPerSec;
         if (fslop_ms > 1.0)
         {
-            fprintf(f, "\n  'End phase slop' should be very small (if not, there's unattributed time): %9.3f Mcycles.\n",
-                m_filtered.m_parentPhaseEndSlop);
+            fprintf(f,
+                    "\n  'End phase slop' should be very small (if not, there's unattributed time): %9.3f Mcycles.\n",
+                    m_filtered.m_parentPhaseEndSlop);
         }
     }
 }
@@ -7214,7 +7198,7 @@ LPCWSTR Compiler::JitTimeLogCsv()
 void JitTimer::PrintCsvHeader()
 {
     LPCWSTR jitTimeLogCsv = Compiler::JitTimeLogCsv();
-    if (jitTimeLogCsv == NULL)
+    if (jitTimeLogCsv == nullptr)
     {
         return;
     }
@@ -7257,7 +7241,7 @@ extern ICorJitHost* g_jitHost;
 void JitTimer::PrintCsvMethodStats(Compiler* comp)
 {
     LPCWSTR jitTimeLogCsv = Compiler::JitTimeLogCsv();
-    if (jitTimeLogCsv == NULL)
+    if (jitTimeLogCsv == nullptr)
     {
         return;
     }
@@ -7287,7 +7271,9 @@ void JitTimer::PrintCsvMethodStats(Compiler* comp)
     for (int i = 0; i < PHASE_NUMBER_OF; i++)
     {
         if (!PhaseHasChildren[i])
+        {
             totCycles += m_info.m_cyclesByPhase[i];
+        }
         fprintf(fp, "%I64u,", m_info.m_cyclesByPhase[i]);
     }
 
@@ -7306,7 +7292,9 @@ void JitTimer::Terminate(Compiler* comp, CompTimeSummaryInfo& sum)
     for (int i = 0; i < PHASE_NUMBER_OF; i++)
     {
         if (!PhaseHasChildren[i])
+        {
             totCycles2 += m_info.m_cyclesByPhase[i];
+        }
     }
     // We include m_parentPhaseEndSlop in the next phase's time also (we probably shouldn't)
     // totCycles2 += m_info.m_parentPhaseEndSlop;
@@ -7354,7 +7342,9 @@ void Compiler::AggregateMemStats::Print(FILE* f)
 {
     fprintf(f, "For %9u methods:\n", nMethods);
     if (nMethods == 0)
+    {
         return;
+    }
     fprintf(f, "  count:       %12u (avg %7u per method)\n", allocCnt, allocCnt / nMethods);
     fprintf(f, "  alloc size : %12llu (avg %7llu per method)\n", allocSz, allocSz / nMethods);
     fprintf(f, "  max alloc  : %12llu\n", allocSzMax);
@@ -10149,11 +10139,6 @@ void cNodeIR(Compiler* comp, GenTree* tree)
                 chars += printf(" ");
                 chars += cLeafIR(comp, tree);
             }
-            break;
-
-        case GT_STORE_CLS_VAR:
-
-            chars += printf(" ???");
             break;
 
         case GT_LEA:

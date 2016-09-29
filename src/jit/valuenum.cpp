@@ -2072,6 +2072,7 @@ bool ValueNumStore::CanEvalForConstantArgs(VNFunc vnf)
             case GT_MKREFANY: // We can't evaluate these.
             case GT_RETFILT:
             case GT_LIST:
+            case GT_FIELD_LIST:
             case GT_ARR_LENGTH:
                 return false;
             case GT_MULHI:
@@ -6522,6 +6523,9 @@ void Compiler::fgValueNumberTree(GenTreePtr tree, bool evalAsgLhsInd)
 
                 case GT_JTRUE:
                 case GT_LIST:
+#ifndef LEGACY_BACKEND
+                case GT_FIELD_LIST:
+#endif // !LEGACY_BACKEND
                     // These nodes never need to have a ValueNumber
                     tree->gtVNPair.SetBoth(ValueNumStore::NoVN);
                     break;
@@ -7061,11 +7065,11 @@ VNFunc Compiler::fgValueNumberHelperMethVNFunc(CorInfoHelpFunc helpFunc)
             vnf = VNFunc(GT_MOD);
             break;
         case CORINFO_HELP_ULDIV:
-            vnf = VNFunc(GT_DIV);
-            break; // Is this the right thing?
+            vnf = VNFunc(GT_UDIV);
+            break;
         case CORINFO_HELP_ULMOD:
-            vnf = VNFunc(GT_MOD);
-            break; // Is this the right thing?
+            vnf = VNFunc(GT_UMOD);
+            break;
 
         case CORINFO_HELP_LNG2DBL:
             vnf = VNF_Lng2Dbl;

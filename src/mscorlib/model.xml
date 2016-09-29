@@ -1064,6 +1064,11 @@
       <Member MemberType="Event" Name="Resolving" />
       <Member MemberType="Event" Name="Unloading" />
     </Type>
+    <Type Name="System.Runtime.MemoryFailPoint">
+      <Member Name="#ctor(System.Int32)" />
+      <Member Name="Dispose" />
+      <Member Status="ImplRoot" Name="Finalize" />
+    </Type>
     <Type Name="System.Reflection.Metadata.AssemblyExtensions">
       <Member Name="TryGetRawMetadata(System.Reflection.Assembly,System.Byte*@,System.Int32@)"/>
     </Type>
@@ -1833,6 +1838,7 @@
       <Member MemberType="Field" Name="value__" />
     </Type>
     <Type Name="System.Diagnostics.Debugger">
+      <Member MemberType="Field" Name="DefaultCategory" />
       <Member Name="#ctor" />
       <Member Name="Break" />
       <Member Name="get_IsAttached" />
@@ -3579,6 +3585,17 @@
       <Member Name="BigMul(System.Int32,System.Int32)" />
       <Member Name="Ceiling(System.Decimal)"  />
       <Member Name="Ceiling(System.Double)"/>
+      <Member Name="Clamp(System.Byte,System.Byte,System.Byte)" />
+      <Member Name="Clamp(System.Decimal,System.Decimal,System.Decimal)" />
+      <Member Name="Clamp(System.Double,System.Double,System.Double)" />
+      <Member Name="Clamp(System.Int16,System.Int16,System.Int16)" />
+      <Member Name="Clamp(System.Int32,System.Int32,System.Int32)" />
+      <Member Name="Clamp(System.Int64,System.Int64,System.Int64)" />
+      <Member Name="Clamp(System.SByte,System.SByte,System.SByte)" />
+      <Member Name="Clamp(System.Single,System.Single,System.Single)" />
+      <Member Name="Clamp(System.UInt16,System.UInt16,System.UInt16)" />
+      <Member Name="Clamp(System.UInt32,System.UInt32,System.UInt32)" />
+      <Member Name="Clamp(System.UInt64,System.UInt64,System.UInt64)" />
       <Member Name="Cos(System.Double)" />
       <Member Name="Cosh(System.Double)" />
       <Member Name="DivRem(System.Int32,System.Int32,System.Int32@)" />
@@ -4099,6 +4116,7 @@
       <Member Name="get_Name" />
       <Member Name="get_ProcessorArchitecture" />
       <Member Name="get_Version" />
+      <Member Name="GetAssemblyName(System.String)" />
       <Member Name="GetPublicKey" />
       <Member Name="GetPublicKeyToken" />
       <Member Name="set_CultureInfo(System.Globalization.CultureInfo)" />
@@ -4115,6 +4133,7 @@
       <Member Name="ToString" />
       <Member Name="GetObjectData(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member Name="OnDeserialization(System.Object)" />
+      <Member Name="ReferenceMatchesDefinition(System.Reflection.AssemblyName,System.Reflection.AssemblyName)" />
       <Member Name="#ctor(System.String)" />
       <Member MemberType="Property" Name="CodeBase" />
       <Member MemberType="Property" Name="CultureInfo" />
@@ -5547,6 +5566,9 @@
       <Member MemberType="Property" Name="IsPinvokeImpl" />
       <Member MemberType="Property" Name="IsPrivate" />
       <Member MemberType="Property" Name="IsPublic" />
+      <Member MemberType="Property" Name="IsSecurityCritical" />
+      <Member MemberType="Property" Name="IsSecuritySafeCritical" />
+      <Member MemberType="Property" Name="IsSecurityTransparent" />
       <Member MemberType="Property" Name="IsSpecialName" />
       <Member MemberType="Property" Name="IsStatic" />
       <Member MemberType="Property" Name="MemberType" />
@@ -5680,6 +5702,8 @@
       <Member Name="get_IsSpecialName" />
       <Member Name="get_IsStatic" />
       <Member Name="get_IsVirtual" />
+      <Member Name="get_IsSecurityCritical" />
+      <Member Name="get_IsSecurityTransparent" />
       <Member Name="get_MethodHandle" />
       <Member Name="get_MethodImplementationFlags" />
       <Member Name="GetGenericArguments" />
@@ -5713,6 +5737,8 @@
       <Member MemberType="Property" Name="IsSpecialName" />
       <Member MemberType="Property" Name="IsStatic" />
       <Member MemberType="Property" Name="IsVirtual" />
+      <Member MemberType="Property" Name="IsSecurityCritical" />
+      <Member MemberType="Property" Name="IsSecurityTransparent" />
       <Member MemberType="Property" Name="MethodHandle" />
       <Member MemberType="Property" Name="MethodImplementationFlags" />
       <Member Name="GetCurrentMethod" />
@@ -5919,6 +5945,7 @@
       <Member Name="Box(System.Void*,System.Type)" />
       <Member Name="Unbox(System.Object)" />
       <Member Name="System.Runtime.Serialization.ISerializable.GetObjectData(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+      <Member Status="ImplRoot" Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
     </Type>
     <Type Name="System.Reflection.PortableExecutableKinds">
       <Member MemberType="Field" Name="NotAPortableExecutableImage" />
@@ -6111,6 +6138,15 @@
       <Member Name="#ctor(System.String,System.Exception)" />
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
     </Type>
+    <Type Name="System.Resources.MissingSatelliteAssemblyException">
+      <Member Name="#ctor" />
+      <Member Name="#ctor(System.String)" />
+      <Member Name="#ctor(System.String,System.String)" />
+      <Member Name="#ctor(System.String,System.Exception)" />
+      <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+      <Member Name="get_CultureName" />
+      <Member MemberType="Property" Name="CultureName"/>
+    </Type>
     <Type Name="System.Resources.NeutralResourcesLanguageAttribute">
       <Member Name="#ctor(System.String)" />
       <Member Name="#ctor(System.String,System.Resources.UltimateResourceFallbackLocation)" />
@@ -6118,6 +6154,19 @@
       <Member MemberType="Property" Name="CultureName" />
       <Member Name="get_Location" />
       <Member MemberType="Property" Name="Location" />
+    </Type>
+    <Type Name="System.Resources.IResourceReader">
+      <Member Name="Close"/>
+      <Member Name="GetEnumerator"/>
+    </Type>
+    <Type Name="System.Resources.ResourceReader">
+      <Member Name="#ctor(System.IO.Stream)"/>
+      <Member Name="#ctor(System.String)"/>
+      <Member Name="Close"/>
+      <Member Name="Dispose"/>
+      <Member Name="GetResourceData(System.String,System.String@,System.Byte[]@)"/>
+      <Member Name="GetEnumerator"/>
+      <Member Name="System.Collections.IEnumerable.GetEnumerator"/>
     </Type>
     <Type Name="System.Resources.ResourceManager">
       <Member MemberType="Field" Name="BaseNameField" />
@@ -6131,6 +6180,7 @@
       <Member Name="get_BaseName" />
       <Member Name="get_IgnoreCase" />
       <Member Name="get_ResourceSetType" />
+      <Member Name="get_FallbackLocation" />
       <Member Name="GetNeutralResourcesLanguage(System.Reflection.Assembly)" />
       <Member Name="GetObject(System.String)" />
       <Member Name="GetObject(System.String,System.Globalization.CultureInfo)" />
@@ -6147,9 +6197,12 @@
       <Member Status="ImplRoot" Name="OnSerializing(System.Runtime.Serialization.StreamingContext)" />
       <Member Name="ReleaseAllResources" />
       <Member Name="set_IgnoreCase(System.Boolean)" />
+      <Member Name="set_FallbackLocation(System.Resources.UltimateResourceFallbackLocation)" />
       <Member MemberType="Property" Name="BaseName" />
       <Member MemberType="Property" Name="IgnoreCase" />
       <Member MemberType="Property" Name="ResourceSetType" />
+      <Member MemberType="Property" Name="FallbackLocation" />
+      <Member Name="CreateFileBasedResourceManager(System.String,System.String,System.Type)" />
     </Type>
     <Type Name="System.Resources.ResourceSet">
       <Member MemberType="Field" Name="Reader" />
@@ -6157,10 +6210,12 @@
       <Member Name="#ctor" />
       <Member Name="#ctor(System.IO.Stream)" />
       <Member Name="#ctor(System.String)" />
+      <Member Name="#ctor(System.Resources.IResourceReader)" />
       <Member Name="Close" />
       <Member Name="Dispose" />
       <Member Name="Dispose(System.Boolean)" />
       <Member Name="GetDefaultReader" />
+      <Member Name="GetDefaultWriter" />
       <Member Name="GetEnumerator" />
       <Member Name="GetObject(System.String)" />
       <Member Name="GetObject(System.String,System.Boolean)" />
@@ -6187,10 +6242,6 @@
       <Member Name="#ctor(System.Runtime.CompilerServices.CompilationRelaxations)" />
       <Member MemberType="Property" Name="CompilationRelaxations" />
     </Type>
-    <Type Name="System.Runtime.CompilerServices.CallConvCdecl" /> <!-- for MC++ -->
-    <Type Name="System.Runtime.CompilerServices.CallConvStdcall" /> <!-- for MC++ -->
-    <Type Name="System.Runtime.CompilerServices.CallConvThiscall" /> <!-- for MC++ -->
-    <Type Name="System.Runtime.CompilerServices.CallConvFastcall" /> <!-- for MC++ -->
     <Type Name="System.Runtime.CompilerServices.CompilerMarshalOverride" />
     <Type Name="System.Runtime.CompilerServices.CustomConstantAttribute">
       <Member Name="#ctor" />
@@ -6212,6 +6263,21 @@
       <Member Name="#ctor(System.Byte,System.Byte,System.UInt32,System.UInt32,System.UInt32)" />
       <Member Name="get_Value" />
       <Member MemberType="Property" Name="Value" />
+    </Type>
+    <Type Name="System.Runtime.CompilerServices.DefaultDependencyAttribute">
+      <Member Name="#ctor(System.Runtime.CompilerServices.LoadHint)" />
+      <Member Name="get_LoadHint" />
+      <Member MemberType="Property" Name="LoadHint" />
+    </Type>
+    <Type Name="System.Runtime.CompilerServices.DependencyAttribute">
+      <Member Name="#ctor(System.String,System.Runtime.CompilerServices.LoadHint)" />
+      <Member Name="get_DependentAssembly" />
+      <Member Name="get_LoadHint" />
+      <Member MemberType="Property" Name="DependentAssembly" />
+      <Member MemberType="Property" Name="LoadHint" />
+    </Type>
+    <Type Name="System.Runtime.CompilerServices.DiscardableAttribute">
+      <Member Name="#ctor" />
     </Type>
     <Type Name="System.Runtime.CompilerServices.DisablePrivateReflectionAttribute">
       <Member Name="#ctor" />
@@ -6254,18 +6320,6 @@
     </Type>
     <Type Name="System.Runtime.CompilerServices.SuppressMergeCheckAttribute"> <!-- for MC++ -->
     </Type>
-    <Type Name="System.Runtime.CompilerServices.RequiredAttributeAttribute"> <!-- for MC++ -->
-      <Member Name="#ctor(System.Type)" />
-      <Member Name="get_RequiredContract" />
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsBoxed"> <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsByValue"> <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsConst"> <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsCopyConstructed"> <!-- for MC++ -->
-    </Type>
     <Type Name="System.Runtime.CompilerServices.ICastable">
       <Member Name="IsInstanceOfInterface(System.RuntimeTypeHandle,System.Exception@)" /> <!-- EE -->
       <Member Name="GetImplType(System.RuntimeTypeHandle)" /> <!-- EE -->
@@ -6274,22 +6328,7 @@
       <Member Name="IsInstanceOfInterface(System.Runtime.CompilerServices.ICastable,System.RuntimeType,System.Exception@)" /> <!-- EE -->
       <Member Name="GetImplType(System.Runtime.CompilerServices.ICastable,System.RuntimeType)" /> <!-- EE -->
     </Type>
-    <Type Name="System.Runtime.CompilerServices.IsExplicitlyDereferenced"> <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsImplicitlyDereferenced">  <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsLong">  <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsJitIntrinsic">  <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsSignUnspecifiedByte">  <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsUdtReturn">  <!-- for MC++ -->
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.NativeCppClassAttribute">  <!-- for MC++ -->
-      <Member Name="#ctor" />
-    </Type>
-    <Type Name="System.Runtime.CompilerServices.IsVolatile" />  <!-- for MC++ -->
+    <Type Name="System.Runtime.CompilerServices.IsVolatile" />  <!-- for All Compilers, [ C# and MC++ uses it] -->
     <Type Name="System.Runtime.CompilerServices.MethodCodeType">
       <Member MemberType="Field" Name="IL" />
       <Member MemberType="Field" Name="Native" />
@@ -6325,10 +6364,29 @@
       <Member Name="InitializeArray(System.Array,System.RuntimeFieldHandle)" />
       <Member Name="GetHashCode(System.Object)" />
       <Member Name="RunClassConstructor(System.RuntimeTypeHandle)" />
+      <Member Name="RunModuleConstructor(System.ModuleHandle)" />
+      <Member Name="ExecuteCodeWithGuaranteedCleanup(System.Runtime.CompilerServices.RuntimeHelpers+TryCode,System.Runtime.CompilerServices.RuntimeHelpers+CleanupCode,System.Object)" />
       <Member MemberType="Property" Name="OffsetToStringData" />
       <Member Status="ImplRoot" Name="ExecuteBackoutCodeHelper(System.Object,System.Object,System.Boolean)" />
-      <Member Status="ImplRoot" Name="PrepareConstrainedRegionsNoOP" />
-      <Member Status="ImplRoot" Name="PrepareConstrainedRegions" />
+      <Member Name="PrepareConstrainedRegions" />
+      <Member Name="PrepareConstrainedRegionsNoOP" />
+      <Member Name="PrepareContractedDelegate(System.Delegate)" />
+      <Member Name="PrepareDelegate(System.Delegate)" />
+      <Member Name="PrepareMethod(System.RuntimeMethodHandle)" />
+      <Member Name="PrepareMethod(System.RuntimeMethodHandle,System.RuntimeTypeHandle[])" />
+      <Member Name="ProbeForSufficientStack" />
+    </Type>
+    <Type Name="System.Runtime.CompilerServices.RuntimeHelpers+CleanupCode">
+      <Member Name="#ctor(System.Object,System.IntPtr)" />
+      <Member Name="BeginInvoke(System.Object,System.Boolean,System.AsyncCallback,System.Object)" />
+      <Member Name="EndInvoke(System.IAsyncResult)" />
+      <Member Name="Invoke(System.Object,System.Boolean)" />
+    </Type>
+    <Type Name="System.Runtime.CompilerServices.RuntimeHelpers+TryCode">
+      <Member Name="#ctor(System.Object,System.IntPtr)" />
+      <Member Name="BeginInvoke(System.Object,System.AsyncCallback,System.Object)" />
+      <Member Name="EndInvoke(System.IAsyncResult)" />
+      <Member Name="Invoke(System.Object)" />
     </Type>
     <Type Name="System.Runtime.CompilerServices.ConditionalWeakTable&lt;TKey,TValue&gt;">
       <Member Name="#ctor" />
@@ -6829,6 +6887,14 @@
       <Member MemberType="Property" Name="IsClosed" />
       <Member MemberType="Property" Name="IsInvalid" />
     </Type>
+    <Type Name="Microsoft.Win32.SafeHandles.CriticalHandleMinusOneIsInvalid">
+      <Member Name="#ctor" />
+      <Member Name="get_IsInvalid" />
+    </Type>
+    <Type Name="Microsoft.Win32.SafeHandles.CriticalHandleZeroOrMinusOneIsInvalid">
+      <Member Name="#ctor" />
+      <Member Name="get_IsInvalid" />
+    </Type>
     <Type Name="Microsoft.Win32.SafeHandles.SafeHandleMinusOneIsInvalid">
       <Member Name="#ctor(System.Boolean)" />
       <Member Name="get_IsInvalid" />
@@ -6957,12 +7023,65 @@
     </Type>
     <Type Name="System.Security.AllowPartiallyTrustedCallersAttribute">
       <Member Name="#ctor" />
+      <Member Name="get_PartialTrustVisibilityLevel" />
+      <Member Name="set_PartialTrustVisibilityLevel(System.Security.PartialTrustVisibilityLevel)" />
+      <Member MemberType="Property" Name="PartialTrustVisibilityLevel" />
+    </Type>
+    <Type Name="System.Security.PartialTrustVisibilityLevel">
+      <Member MemberType="Field" Name="NotVisibleByDefault" />
+      <Member MemberType="Field" Name="value__" />
+      <Member MemberType="Field" Name="VisibleToAllHosts" />
+    </Type>
+    <Type Name="System.Security.SecurityCriticalAttribute">
+      <Member Name="#ctor" />
+      <Member Name="#ctor(System.Security.SecurityCriticalScope)" />
+      <Member Name="get_Scope" />
+      <Member MemberType="Property" Name="Scope" />
+    </Type>
+    <Type Name="System.Security.SecurityCriticalScope">
+      <Member MemberType="Field" Name="Everything" />
+      <Member MemberType="Field" Name="Explicit" />
+      <Member MemberType="Field" Name="value__" />
     </Type>
     <Type Name="System.Security.SecurityException">
       <Member Name="#ctor" />
+      <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
       <Member Name="#ctor(System.String)" />
       <Member Name="#ctor(System.String,System.Exception)" />
-      <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+      <Member Name="#ctor(System.String,System.Type)" />
+      <Member Name="#ctor(System.String,System.Type,System.String)" />
+      <Member Name="get_Demanded" />
+      <Member Name="get_DenySetInstance" />
+      <Member Name="get_FailedAssemblyInfo" />
+      <Member Name="get_GrantedSet" />
+      <Member Name="get_Method" />
+      <Member Name="get_PermissionState" />
+      <Member Name="get_PermissionType" />
+      <Member Name="get_PermitOnlySetInstance" />
+      <Member Name="get_RefusedSet" />
+      <Member Name="get_Url" />
+      <Member Name="GetObjectData(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+      <Member Name="set_Demanded(System.Object)" />
+      <Member Name="set_DenySetInstance(System.Object)" />
+      <Member Name="set_FailedAssemblyInfo(System.Reflection.AssemblyName)" />
+      <Member Name="set_GrantedSet(System.String)" />
+      <Member Name="set_Method(System.Reflection.MethodInfo)" />
+      <Member Name="set_PermissionState(System.String)" />
+      <Member Name="set_PermissionType(System.Type)" />
+      <Member Name="set_PermitOnlySetInstance(System.Object)" />
+      <Member Name="set_RefusedSet(System.String)" />
+      <Member Name="set_Url(System.String)" />
+      <Member Name="ToString" />
+      <Member MemberType="Property" Name="Demanded" />
+      <Member MemberType="Property" Name="DenySetInstance" />
+      <Member MemberType="Property" Name="FailedAssemblyInfo" />
+      <Member MemberType="Property" Name="GrantedSet" />
+      <Member MemberType="Property" Name="Method" />
+      <Member MemberType="Property" Name="PermissionState" />
+      <Member MemberType="Property" Name="PermissionType" />
+      <Member MemberType="Property" Name="PermitOnlySetInstance" />
+      <Member MemberType="Property" Name="RefusedSet" />
+      <Member MemberType="Property" Name="Url" />
     </Type>
     <Type Name="System.Security.SecurityState">
       <Member Name="#ctor" />
@@ -7792,7 +7911,9 @@
       <Member Name="TryEnter(System.Object,System.TimeSpan,System.Boolean@)" />
       <Member Name="Wait(System.Object)" />
       <Member Name="Wait(System.Object,System.Int32)" />
+      <Member Name="Wait(System.Object,System.Int32,System.Boolean)" />
       <Member Name="Wait(System.Object,System.TimeSpan)" />
+      <Member Name="Wait(System.Object,System.TimeSpan,System.Boolean)" />
     </Type>
     <Type Name="System.Threading.ManualResetEvent">
       <Member Name="#ctor(System.Boolean)" />
@@ -8394,6 +8515,9 @@
       <Member Name="get_IsPrimitive" />
       <Member Name="get_IsPublic" />
       <Member Name="get_IsSealed" />
+      <Member Name="get_IsSecurityCritical" />
+      <Member Name="get_IsSecuritySafeCritical" />
+      <Member Name="get_IsSecurityTransparent" />      
       <Member Name="get_IsSerializable" />
       <Member Name="get_IsSpecialName" />
       <Member Name="get_IsUnicodeClass" />
@@ -8467,6 +8591,7 @@
       <Member Name="GetTypeFromCLSID(System.Guid,System.String)" />
       <Member Name="GetTypeFromCLSID(System.Guid,System.String,System.Boolean)" />
       <Member Name="GetTypeFromHandle(System.RuntimeTypeHandle)" />
+      <Member Status="ImplRoot" Name="GetTypeFromHandleUnsafe(System.IntPtr)" /> <!-- Used by System.Linq.Expressions tests -->
       <Member Name="GetTypeFromProgID(System.String)" />
       <Member Name="GetTypeFromProgID(System.String,System.Boolean)" />
       <Member Name="GetTypeFromProgID(System.String,System.String)" />
@@ -8819,6 +8944,9 @@
       <Member Name="#ctor" />
     </Type>
     <Type Name="System.Runtime.CompilerServices.CompilerGeneratedAttribute">
+      <Member Name="#ctor" />
+    </Type>
+    <Type Name="System.Runtime.CompilerServices.CompilerGlobalScopeAttribute">
       <Member Name="#ctor" />
     </Type>
 <!-- SMOSIER ADDED API ROOTS FOR our build process -->
@@ -9857,8 +9985,14 @@
       <Member Name="ResolveToken(System.Int32,System.IntPtr@,System.IntPtr@,System.IntPtr@)" /> <!-- EE -->
       <Member Name="ResolveSignature(System.Int32,System.Int32)" /> <!-- EE -->
     </Type>
-    <Type Status="ImplRoot" Name="System.Runtime.CompilerServices.RuntimeWrappedException">
+    <Type Name="System.Runtime.CompilerServices.RuntimeWrappedException">
       <Member Name="#ctor(System.Object)" /> <!-- EE -->
+      <Member Name="get_WrappedException" />
+      <Member Name="GetObjectData(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
+      <Member MemberType="Property" Name="WrappedException" />
+    </Type>
+    <Type Name="System.Runtime.CompilerServices.StringFreezingAttribute">
+      <Member Name="#ctor" />
     </Type>
     <Type Status="ImplRoot" Name="System.Runtime.CompilerServices.TypeDependencyAttribute">
       <Member Name="#ctor(System.String)" />
@@ -9873,7 +10007,13 @@
       <Member Name="op_Equality(System.Runtime.InteropServices.ArrayWithOffset,System.Runtime.InteropServices.ArrayWithOffset)" />
       <Member Name="op_Inequality(System.Runtime.InteropServices.ArrayWithOffset,System.Runtime.InteropServices.ArrayWithOffset)" />
     </Type>
-    <Type Status="ImplRoot" Name="System.Runtime.ConstrainedExecution.ReliabilityContractAttribute" />
+     <Type Name="System.Runtime.ConstrainedExecution.ReliabilityContractAttribute">
+      <Member Name="#ctor(System.Runtime.ConstrainedExecution.Consistency,System.Runtime.ConstrainedExecution.Cer)" />
+      <Member Name="get_Cer" />
+      <Member Name="get_ConsistencyGuarantee" />
+      <Member MemberType="Property" Name="Cer" />
+      <Member MemberType="Property" Name="ConsistencyGuarantee" />
+    </Type>
     <Type Status="ImplRoot" Name="System.Runtime.ConstrainedExecution.PrePrepareMethodAttribute" />
     <Type Name="System.Runtime.ConstrainedExecution.CriticalFinalizerObject">
       <Member Name="#ctor"/>
@@ -10509,17 +10649,34 @@
       <Member MemberType="Field" Name="None" />
       <Member MemberType="Field" Name="value__" />
     </Type>
-    <Type Name="System.Security.SecurityCriticalAttribute">
-      <Member Name="#ctor" />
-    </Type>
     <Type Status="ImplRoot" Name="System.Security.SecurityRuntime">
       <Member Name="FrameDescHelper(System.Security.FrameSecurityDescriptor,System.Security.IPermission,System.Security.PermissionToken,System.RuntimeMethodHandleInternal)" /> <!-- EE -->
       <Member Name="FrameDescSetHelper(System.Security.FrameSecurityDescriptor,System.Security.PermissionSet,System.Security.PermissionSet@,System.RuntimeMethodHandleInternal)" /> <!-- EE -->
     </Type>
+    <Type Name="System.Security.SecurityRulesAttribute">
+      <Member Name="#ctor(System.Security.SecurityRuleSet)" />
+      <Member Name="get_RuleSet" />
+      <Member Name="get_SkipVerificationInFullTrust" />
+      <Member Name="set_SkipVerificationInFullTrust(System.Boolean)" />
+      <Member MemberType="Property" Name="RuleSet" />
+      <Member MemberType="Property" Name="SkipVerificationInFullTrust" />
+    </Type>
+    <Type Name="System.Security.SecurityRuleSet">
+      <Member MemberType="Field" Name="Level1" />
+      <Member MemberType="Field" Name="Level2" />
+      <Member MemberType="Field" Name="None" />
+      <Member MemberType="Field" Name="value__" />
+    </Type>
+    <Type Name="System.Security.SecuritySafeCriticalAttribute">
+      <Member Name="#ctor" />
+    </Type>
     <Type Name="System.Security.SecurityTransparentAttribute">
       <Member Name="#ctor" />
     </Type>
-    <Type Name="System.Security.SecuritySafeCriticalAttribute" >
+    <Type Name="System.Security.SecurityTreatAsSafeAttribute">
+      <Member Name="#ctor" />
+    </Type>
+    <Type Name="System.Security.SuppressUnmanagedCodeSecurityAttribute">
       <Member Name="#ctor" />
     </Type>
     <Type Name="System.Security.UnverifiableCodeAttribute">
@@ -10563,7 +10720,10 @@
     </Type>
     <Type Status="ImplRoot" Name="System.Threading.InternalCrossContextDelegate" />
     <Type Status="ImplRoot" Name="System.Threading.OverlappedData" />
-    <Type Status="ImplRoot" Name="System.Threading.ThreadInterruptedException">
+    <Type Name="System.Threading.ThreadInterruptedException">
+      <Member Name="#ctor" />
+      <Member Name="#ctor(System.String)" />
+      <Member Name="#ctor(System.String,System.Exception)" />
       <Member Name="#ctor(System.Runtime.Serialization.SerializationInfo,System.Runtime.Serialization.StreamingContext)" />
     </Type>
     <Type Name="System.ThreadStaticAttribute">

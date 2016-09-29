@@ -1165,9 +1165,9 @@ FCFuncStart(gAssemblyNameFuncs)
     FCFuncElement("nGetPublicKeyToken", AssemblyNameNative::GetPublicKeyToken)
 #ifndef FEATURE_CORECLR
     FCFuncElement("EscapeCodeBase", AssemblyNameNative::EscapeCodeBase)
+#endif // !FEATURE_CORECLR
     FCFuncElement("ReferenceMatchesDefinitionInternal", AssemblyNameNative::ReferenceMatchesDefinition)
     FCFuncElement("nGetFileInformation", AssemblyNameNative::GetFileInformation)
-#endif // !FEATURE_CORECLR 
 FCFuncEnd()
 
 FCFuncStart(gLoaderAllocatorFuncs)
@@ -1567,11 +1567,9 @@ FCFuncStart(gGCInterfaceFuncs)
     FCFuncElement("_GetAllocatedBytesForCurrentThread", GCInterface::GetAllocatedBytesForCurrentThread)
 FCFuncEnd()
 
-#ifndef FEATURE_CORECLR
 FCFuncStart(gMemoryFailPointFuncs)
     FCFuncElement("GetMemorySettings", COMMemoryFailPoint::GetMemorySettings)
 FCFuncEnd()
-#endif // FEATURE_CORECLR
 
 FCFuncStart(gInteropMarshalFuncs)
     FCFuncElement("GetLastWin32Error", MarshalNative::GetLastWin32Error)
@@ -1829,8 +1827,8 @@ FCFuncStart(gCompilerFuncs)
     FCFuncElement("GetObjectValue", ObjectNative::GetObjectValue)
     FCIntrinsic("InitializeArray", ArrayNative::InitializeArray, CORINFO_INTRINSIC_InitializeArray)
     FCFuncElement("_RunClassConstructor", ReflectionInvocation::RunClassConstructor)
-#ifndef FEATURE_CORECLR
     FCFuncElement("_RunModuleConstructor", ReflectionInvocation::RunModuleConstructor)
+#ifndef FEATURE_CORECLR
     FCFuncElement("_PrepareMethod", ReflectionInvocation::PrepareMethod)
 #endif // !FEATURE_CORECLR
     QCFuncElement("_CompileMethod", ReflectionInvocation::CompileMethod)
@@ -2256,9 +2254,7 @@ FCClassElement("Math", "System", gMathFuncs)
 #ifdef MDA_SUPPORTED 
 FCClassElement("Mda", "System", gMda)
 #endif
-#ifndef FEATURE_CORECLR
 FCClassElement("MemoryFailPoint", "System.Runtime", gMemoryFailPointFuncs)
-#endif // FEATURE_CORECLR
 #ifdef FEATURE_REMOTING    
 FCClassElement("Message", "System.Runtime.Remoting.Messaging", gMessageFuncs)
 #endif    

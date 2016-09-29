@@ -17,6 +17,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #include "compiler.h"
 #include "phase.h"
 #include "lsra.h"
+#include "sideeffects.h"
 
 class Lowering : public Phase
 {
@@ -203,9 +204,9 @@ private:
 #ifdef _TARGET_ARM64_
     void TreeNodeInfoInitPutArgStk(GenTree* argNode, fgArgTabEntryPtr info);
 #endif // _TARGET_ARM64_
-#ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
+#ifdef FEATURE_PUT_STRUCT_ARG_STK
     void TreeNodeInfoInitPutArgStk(GenTree* tree);
-#endif // FEATURE_UNIX_AMD64_STRUCT_PASSING
+#endif // FEATURE_PUT_STRUCT_ARG_STK
     void TreeNodeInfoInitLclHeap(GenTree* tree);
 
     void DumpNodeInfoMap();
@@ -228,6 +229,7 @@ private:
 #endif // defined(_TARGET_XARCH_)
 
 #if !CPU_LOAD_STORE_ARCH
+    bool IsRMWIndirCandidate(GenTree* operand, GenTree* storeInd);
     bool IsBinOpInRMWStoreInd(GenTreePtr tree);
     bool IsRMWMemOpRootedAtStoreInd(GenTreePtr storeIndTree, GenTreePtr* indirCandidate, GenTreePtr* indirOpSource);
     bool SetStoreIndOpCountsIfRMWMemOp(GenTreePtr storeInd);
@@ -247,7 +249,7 @@ public:
 private:
     static bool NodesAreEquivalentLeaves(GenTreePtr candidate, GenTreePtr storeInd);
 
-    bool AreSourcesPossiblyModified(GenTree* addr, GenTree* base, GenTree* index);
+    bool AreSourcesPossiblyModifiedLocals(GenTree* addr, GenTree* base, GenTree* index);
 
     // return true if 'childNode' is an immediate that can be contained
     //  by the 'parentNode' (i.e. folded into an instruction)
@@ -269,9 +271,10 @@ private:
         return LIR::AsRange(m_block);
     }
 
-    LinearScan* m_lsra;
-    unsigned    vtableCallTemp; // local variable we use as a temp for vtable calls
-    BasicBlock* m_block;
+    LinearScan*   m_lsra;
+    unsigned      vtableCallTemp;       // local variable we use as a temp for vtable calls
+    SideEffectSet m_scratchSideEffects; // SideEffectSet used for IsSafeToContainMem and isRMWIndirCandidate
+    BasicBlock*   m_block;
 };
 
 #endif // _LOWER_H_

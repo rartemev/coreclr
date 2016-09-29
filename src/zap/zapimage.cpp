@@ -1163,6 +1163,14 @@ HANDLE ZapImage::SaveImage(LPCWSTR wszOutputFileName, CORCOMPILE_NGEN_SIGNATURE 
 
     OutputTables();
 
+	// Create a empty export table.  This makes tools like symchk not think
+	// that native images are resoure-only DLLs.  It is important to NOT
+	// be a resource-only DLL because those DLL's PDBS are not put up on the
+	// symbol server and we want NEN PDBS to be placed there.  
+	ZapPEExports* exports = new(GetHeap()) ZapPEExports(wszOutputFileName);
+	m_pDebugSection->Place(exports);
+	SetDirectoryEntry(IMAGE_DIRECTORY_ENTRY_EXPORT, exports);
+
     ComputeRVAs();
 
     if (!IsReadyToRunCompilation())
@@ -1697,16 +1705,16 @@ void ZapImage::OutputTables()
         SetSizeOfStackCommit(m_ModuleDecoder.GetSizeOfStackCommit());
     }
 
-#if defined(_TARGET_ARM_) && defined(FEATURE_CORECLR) && defined(FEATURE_CORESYSTEM)
+#if defined(FEATURE_PAL)
+    // PAL library requires native image sections to align to page bounaries.
+    SetFileAlignment(0x1000);
+#elif defined(_TARGET_ARM_) && defined(FEATURE_CORECLR) && defined(FEATURE_CORESYSTEM)
     if (!IsReadyToRunCompilation())
     {
         // On ARM CoreSys builds, crossgen will use 4k file alignment, as requested by Phone perf team
         // to improve perf on phones with compressed system partitions.
         SetFileAlignment(0x1000);
     }
-#elif defined(FEATURE_PAL)
-    // PAL library requires native image sections to align to page bounaries.
-    SetFileAlignment(0x1000);
 #endif
 }
 

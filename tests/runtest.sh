@@ -392,6 +392,7 @@ function create_core_overlay {
         # Test dependencies come from a Windows build, and mscorlib.ni.dll would be the one from Windows
         rm -f "$coreOverlayDir/mscorlib.ni.dll"
     fi
+    copy_test_native_bin_to_test_root
 }
 
 function precompile_overlay_assemblies {
@@ -909,14 +910,8 @@ function coreclr_code_coverage {
 }
 
 function check_cpu_architecture {
-    # Use uname to determine what the CPU is.
-    local CPUName=$(uname -p)
+    local CPUName=$(uname -m)
     local __arch=
-
-    # Some Linux platforms report unknown for platform, but the arch for machine.
-    if [ "$CPUName" == "unknown" ]; then
-        CPUName=$(uname -m)
-    fi
 
     case $CPUName in
         i686)
@@ -941,6 +936,7 @@ function check_cpu_architecture {
 }
 
 ARCH=$(check_cpu_architecture)
+echo "Running on  CPU- $ARCH"
 
 # Exit code constants
 readonly EXIT_CODE_SUCCESS=0       # Script ran normally.
@@ -1161,7 +1157,6 @@ fi
 xunit_output_begin
 create_core_overlay
 precompile_overlay_assemblies
-copy_test_native_bin_to_test_root
 
 if [ "$buildOverlayOnly" == "ON" ];
 then
