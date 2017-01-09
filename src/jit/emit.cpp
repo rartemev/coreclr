@@ -4373,6 +4373,15 @@ void emitter::emitComputeCodeSizes()
         printf("Cold code size = 0x%X bytes\n", emitTotalColdCodeSize);
     }
 #endif
+
+#if FUNC_INFO_LOGGING000
+    LPCWSTR emitJitFuncInfoFile = JitConfig.JitFuncInfoFile();
+    if (emitJitFuncInfoFile != nullptr)
+    {
+        fprintf(emitJitFuncInfoFile, "Code: 0x%X/0x%X ", emitTotalHotCodeSize, emitTotalColdCodeSize);
+        fprintf(emitJitFuncInfoFile, ""); // in our logic this causes a flush
+    }
+#endif // FUNC_INFO_LOGGING
 }
 
 /*****************************************************************************

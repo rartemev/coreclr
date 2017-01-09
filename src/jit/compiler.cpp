@@ -4613,7 +4613,7 @@ void Compiler::compCompile(void** methodCodePtr, ULONG* methodCodeSize, CORJIT_F
 #ifdef DEBUG // We only have access to info.compFullName in DEBUG builds.
         fprintf(compJitFuncInfoFile, "%s\n", info.compFullName);
 #elif FEATURE_SIMD
-        fprintf(compJitFuncInfoFile, " %s\n", eeGetMethodFullName(info.compMethodHnd));
+        fprintf(compJitFuncInfoFile, " 0x%X/0x%X  %s\n", info.compILCodeSize, info.compNativeCodeSize, eeGetMethodFullName(info.compMethodHnd));
 #endif
         fprintf(compJitFuncInfoFile, ""); // in our logic this causes a flush
     }
@@ -7144,7 +7144,7 @@ CompTimeInfo::CompTimeInfo(unsigned byteCodeBytes)
 
 bool CompTimeSummaryInfo::IncludedInFilteredData(CompTimeInfo& info)
 {
-    return false; // info.m_byteCodeBytes < 10;
+    return /*false; //*/ info.m_byteCodeBytes < 17;
 }
 
 //------------------------------------------------------------------------
@@ -7168,10 +7168,10 @@ void CompTimeSummaryInfo::AddInfo(CompTimeInfo& info, bool includePhases)
 
     CritSecHolder timeLock(s_compTimeSummaryLock);
 
+    bool includeInFiltered = IncludedInFilteredData(info);
+
     if (includePhases)
     {
-        bool includeInFiltered = IncludedInFilteredData(info);
-
         m_numMethods++;
 
         // Update the totals and maxima.
@@ -7186,6 +7186,12 @@ void CompTimeSummaryInfo::AddInfo(CompTimeInfo& info, bool includePhases)
         m_maximum.m_allClrAPIcalls = max(m_maximum.m_allClrAPIcalls, info.m_allClrAPIcalls);
         m_total.m_allClrAPIcycles += info.m_allClrAPIcycles;
         m_maximum.m_allClrAPIcycles = max(m_maximum.m_allClrAPIcycles, info.m_allClrAPIcycles);
+        if (includeInFiltered)
+        {
+            // UNDONE: no maximum for the filtered set
+            m_filtered.m_allClrAPIcalls += info.m_allClrAPIcalls;
+            m_filtered.m_allClrAPIcycles += info.m_allClrAPIcycles;
+        }
 #endif
 
         if (includeInFiltered)
@@ -7235,6 +7241,13 @@ void CompTimeSummaryInfo::AddInfo(CompTimeInfo& info, bool includePhases)
         m_total.m_allClrAPIcycles += info.m_allClrAPIcycles;
         m_maximum.m_allClrAPIcycles = max(m_maximum.m_allClrAPIcycles, info.m_allClrAPIcycles);
 
+        if (includeInFiltered)
+        {
+            // UNDONE: no maximum for the filtered set
+            m_filtered.m_allClrAPIcalls += info.m_allClrAPIcalls;
+            m_filtered.m_allClrAPIcycles += info.m_allClrAPIcycles;
+        }
+
         // Update the per-phase CLR-API values.
         m_total.m_invokesByPhase[PHASE_CLR_API] += info.m_allClrAPIcalls;
         m_maximum.m_invokesByPhase[PHASE_CLR_API] =
@@ -7253,6 +7266,13 @@ void CompTimeSummaryInfo::AddInfo(CompTimeInfo& info, bool includePhases)
         m_maximum.m_perClrAPIcycles[i] = max(m_maximum.m_perClrAPIcycles[i], info.m_perClrAPIcycles[i]);
 
         m_maximum.m_maxClrAPIcycles[i] = max(m_maximum.m_maxClrAPIcycles[i], info.m_maxClrAPIcycles[i]);
+
+        if (includeInFiltered)
+        {
+            // UNDONE: no maximum for the filtered set
+            m_filtered.m_perClrAPIcalls[i] += info.m_perClrAPIcalls[i];
+            m_filtered.m_perClrAPIcycles[i] += info.m_perClrAPIcycles[i];
+        }
     }
 #endif
 }
@@ -7358,7 +7378,7 @@ void CompTimeSummaryInfo::Print(FILE* f)
     }
     if (m_numFilteredMethods > 0)
     {
-        fprintf(f, "  Compiled %d methods that meet the filter requirement.\n", m_numFilteredMethods);
+        fprintf(f, "\n\n  Compiled %d methods that meet the filter requirement.\n", m_numFilteredMethods);
         fprintf(f, "  Compiled %d bytecodes total (%8.2f avg).\n", m_filtered.m_byteCodeBytes,
                 (double)m_filtered.m_byteCodeBytes / (double)m_numFilteredMethods);
         double totTime_ms = ((double)m_filtered.m_totalCycles / countsPerSec) * 1000.0;
@@ -7468,6 +7488,7 @@ void CompTimeSummaryInfo::Print(FILE* f)
                 checkedMillis += millis;
 #endif
             }
+
         }
 
 #ifdef DEBUG
@@ -7485,6 +7506,31 @@ void CompTimeSummaryInfo::Print(FILE* f)
             fprintf(f, "\n");
         }
         fprintf(f, "\n");
+
+
+        if (m_numFilteredMethods > 0)
+        {
+            fprintf(f, "\n\n");
+            fprintf(f, "     CLR API (filtered methods)                # calls   total time    avg time\n");
+            fprintf(f, "     -------------------------------------------------------------------------------");
+            fprintf(f, "---------------------\n");
+
+            shownCalls = 0;
+            shownMillis = 0.0;
+
+            for (unsigned i = 0; i < API_ICorJitInfo_Names::API_COUNT; i++)
+            {
+                unsigned calls = m_filtered.m_perClrAPIcalls[i];
+                if (calls == 0)
+                    continue;
+                unsigned __int64 cycles = m_filtered.m_perClrAPIcycles[i];
+                double           millis = 1000.0 * cycles / countsPerSec;
+                fprintf(f, "     %-40s", APInames[i]);                                 // API name
+                fprintf(f, " %8u %9.1f ms", calls, millis);                            // #calls, total time
+                fprintf(f, " %8.1f ns\n", 1000000.0 * millis / calls);                 // avg time
+
+            }
+        }
     }
 #endif
 

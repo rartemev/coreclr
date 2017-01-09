@@ -1,0 +1,1 @@
+c:devenv.exe /debugexe "D:\GitHub\CoreClr\bin\Product\Windows_NT.x64.Release\crossgen.exe" /Platform_Assemblies_Paths "D:\GitHub\CoreClr\bin\Product\Windows_NT.x64.Release" /out "D:\GitHub\CoreClr\bin\Product\Windows_NT.x64.Release\System.Private.CoreLib.ni.dll" "D:\GitHub\CoreClr\bin\Product\Windows_NT.x64.Release\System.Private.CoreLib.dll"
