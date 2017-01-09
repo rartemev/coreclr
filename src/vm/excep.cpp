@@ -1690,6 +1690,7 @@ BOOL LeaveCatch(ICodeManager* pEECM,
     }
     CONTRACTL_END;
 
+#ifndef FEATURE_PAL
     // We can assert these things here, and skip a call
     // to COMPlusCheckForAbort later.
 
@@ -1707,6 +1708,10 @@ BOOL LeaveCatch(ICodeManager* pEECM,
 
     SetSP(pCtx, (UINT_PTR)esp);
     return TRUE;
+#else // FEATURE_PAL
+    PORTABILITY_ASSERT("LeaveCatch");
+    return FALSE;
+#endif
 }
 #endif // WIN64EXCEPTIONS
 
@@ -7313,8 +7318,8 @@ AdjustContextForWriteBarrier(
 
     void* f_IP = (void *)GetIP(pContext);
 
-    if (f_IP >= (void *) JIT_WriteBarrierStart && f_IP <= (void *) JIT_WriteBarrierLast ||
-        f_IP >= (void *) JIT_PatchedWriteBarrierStart && f_IP <= (void *) JIT_PatchedWriteBarrierLast)
+    if (((f_IP >= (void *) JIT_WriteBarrierStart) && (f_IP <= (void *) JIT_WriteBarrierLast)) ||
+        ((f_IP >= (void *) JIT_PatchedWriteBarrierStart) && (f_IP <= (void *) JIT_PatchedWriteBarrierLast)))
     {
         // set the exception IP to be the instruction that called the write barrier
         void* callsite = (void *)GetAdjustedCallAddress(*dac_cast<PTR_PCODE>(GetSP(pContext)));
@@ -8981,11 +8986,13 @@ LONG ReflectionInvocationExceptionFilter(
 #else // !(_WIN64 || _TARGET_X86_)
 #error Unsupported platform
 #endif // _WIN64
-        
+
+#ifdef FEATURE_CORRUPTING_EXCEPTIONS
         if (pEHTracker->GetCorruptionSeverity() == ProcessCorrupting)
         {
             EEPolicy::HandleFatalError(COR_E_FAILFAST, reinterpret_cast<UINT_PTR>(pExceptionInfo->ExceptionRecord->ExceptionAddress), NULL, pExceptionInfo);
         }
+#endif // FEATURE_CORRUPTING_EXCEPTIONS
     }
 
     return ret;
@@ -9916,47 +9923,48 @@ PTR_EHWatsonBucketTracker GetWatsonBucketTrackerForPreallocatedException(OBJECTR
         goto doValidation;
     }
 
-    // Find the reference to the exception tracker corresponding to the preallocated exception,
-    // starting the search from the current exception tracker (2nd arg of NULL specifies that).
-#if defined(WIN64EXCEPTIONS)
-    PTR_ExceptionTracker pEHTracker = NULL;
-    PTR_ExceptionTracker pPreviousEHTracker = NULL;
+    {
+        // Find the reference to the exception tracker corresponding to the preallocated exception,
+        // starting the search from the current exception tracker (2nd arg of NULL specifies that).
+ #if defined(WIN64EXCEPTIONS)
+        PTR_ExceptionTracker pEHTracker = NULL;
+        PTR_ExceptionTracker pPreviousEHTracker = NULL;
 
 #elif _TARGET_X86_
-    PTR_ExInfo pEHTracker = NULL;
-    PTR_ExInfo pPreviousEHTracker = NULL;
+        PTR_ExInfo pEHTracker = NULL;
+        PTR_ExInfo pPreviousEHTracker = NULL;
 #else // !(_WIN64 || _TARGET_X86_)
 #error Unsupported platform
 #endif // _WIN64
 
-    if (fStartSearchFromPreviousTracker)
-    {
-        // Get the exception tracker previous to the current one
-        pPreviousEHTracker = GetThread()->GetExceptionState()->GetCurrentExceptionTracker()->GetPreviousExceptionTracker();
-
-        // If there is no previous tracker to start from, then simply abort the search attempt.
-        // If we couldnt find the exception tracker, then buckets are not available
-        if (pPreviousEHTracker == NULL)
+        if (fStartSearchFromPreviousTracker)
         {
-            LOG((LF_EH, LL_INFO100, "GetWatsonBucketTrackerForPreallocatedException - Couldnt find the previous EHTracker to start the search from.\n"));
+            // Get the exception tracker previous to the current one
+            pPreviousEHTracker = GetThread()->GetExceptionState()->GetCurrentExceptionTracker()->GetPreviousExceptionTracker();
+
+            // If there is no previous tracker to start from, then simply abort the search attempt.
+            // If we couldnt find the exception tracker, then buckets are not available
+            if (pPreviousEHTracker == NULL)
+            {
+                LOG((LF_EH, LL_INFO100, "GetWatsonBucketTrackerForPreallocatedException - Couldnt find the previous EHTracker to start the search from.\n"));
+                pWBTracker = NULL;
+                goto done;
+            }
+        }
+
+        pEHTracker = GetEHTrackerForPreallocatedException(gc.oPreAllocThrowable, pPreviousEHTracker);
+
+        // If we couldnt find the exception tracker, then buckets are not available
+        if (pEHTracker == NULL)
+        {
+            LOG((LF_EH, LL_INFO100, "GetWatsonBucketTrackerForPreallocatedException - Couldnt find EHTracker for preallocated exception object.\n"));
             pWBTracker = NULL;
             goto done;
         }
+
+        // Get the Watson Bucket Tracker from the exception tracker
+        pWBTracker = pEHTracker->GetWatsonBucketTracker();
     }
-
-    pEHTracker = GetEHTrackerForPreallocatedException(gc.oPreAllocThrowable, pPreviousEHTracker);
-
-    // If we couldnt find the exception tracker, then buckets are not available
-    if (pEHTracker == NULL)
-    {
-        LOG((LF_EH, LL_INFO100, "GetWatsonBucketTrackerForPreallocatedException - Couldnt find EHTracker for preallocated exception object.\n"));
-        pWBTracker = NULL;
-        goto done;
-    }
-
-    // Get the Watson Bucket Tracker from the exception tracker
-    pWBTracker = pEHTracker->GetWatsonBucketTracker();
-
 doValidation:
     _ASSERTE(pWBTracker != NULL);
 
@@ -12196,7 +12204,7 @@ done:
 // CE can be caught in the VM and later reraised again. Examples of such scenarios
 // include AD transition, COM interop, Reflection invocation, to name a few.
 // In such cases, we want to mark the corruption severity for reuse upon reraise,
-// implying that when the VM does a reraise of such a exception, we should use
+// implying that when the VM does a reraise of such an exception, we should use
 // the original corruption severity for the new raised exception, instead of creating
 // a new one for it.
 /* static */
@@ -12912,15 +12920,6 @@ void ExceptionNotifications::DeliverNotificationInternal(ExceptionNotificationHa
     // Get the current AppDomain
     AppDomain *pCurDomain = GetAppDomain();
     _ASSERTE(pCurDomain != NULL);
-
-#ifdef FEATURE_CORECLR
-    if (true)
-    {
-        // On CoreCLR, we dont support enhanced exception notifications
-        _ASSERTE(!"CoreCLR does not support enhanced exception notifications!");
-        return;
-    }
-#endif // FEATURE_CORECLR
 
     struct
     {

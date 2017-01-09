@@ -149,8 +149,6 @@ const char* CodeGen::genSizeStr(emitAttr attr)
         nullptr,
         "xmmword ptr ",
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         "ymmword ptr"
     };
@@ -3054,7 +3052,7 @@ bool CodeGenInterface::validImmForBL(ssize_t addr)
     return
         // If we are running the altjit for NGEN, then assume we can use the "BL" instruction.
         // This matches the usual behavior for NGEN, since we normally do generate "BL".
-        (!compiler->info.compMatchedVM && (compiler->opts.eeFlags & CORJIT_FLG_PREJIT)) ||
+        (!compiler->info.compMatchedVM && compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT)) ||
         (compiler->eeGetRelocTypeHint((void*)addr) == IMAGE_REL_BASED_THUMB_BRANCH24);
 }
 bool CodeGen::arm_Valid_Imm_For_BL(ssize_t addr)
@@ -3240,7 +3238,7 @@ instruction CodeGen::ins_Move_Extend(var_types srcType, bool srcInReg)
  *
  *  Parameters
  *      srcType   - source type
- *      aligned   - whether source is 16-byte aligned if srcType is a SIMD type
+ *      aligned   - whether source is properly aligned if srcType is a SIMD type
  */
 instruction CodeGenInterface::ins_Load(var_types srcType, bool aligned /*=false*/)
 {
@@ -3258,8 +3256,7 @@ instruction CodeGenInterface::ins_Load(var_types srcType, bool aligned /*=false*
 #endif // FEATURE_SIMD
             if (compiler->canUseAVX())
         {
-            // TODO-CQ: consider alignment of AVX vectors.
-            return INS_movupd;
+            return (aligned) ? INS_movapd : INS_movupd;
         }
         else
         {
@@ -3404,7 +3401,7 @@ instruction CodeGen::ins_Copy(var_types dstType)
  *
  *  Parameters
  *      dstType   - destination type
- *      aligned   - whether destination is 16-byte aligned if dstType is a SIMD type
+ *      aligned   - whether destination is properly aligned if dstType is a SIMD type
  */
 instruction CodeGenInterface::ins_Store(var_types dstType, bool aligned /*=false*/)
 {
@@ -3422,8 +3419,7 @@ instruction CodeGenInterface::ins_Store(var_types dstType, bool aligned /*=false
 #endif // FEATURE_SIMD
             if (compiler->canUseAVX())
         {
-            // TODO-CQ: consider alignment of AVX vectors.
-            return INS_movupd;
+            return (aligned) ? INS_movapd : INS_movupd;
         }
         else
         {

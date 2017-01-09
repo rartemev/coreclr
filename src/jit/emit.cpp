@@ -1264,9 +1264,9 @@ void* emitter::emitAllocInstr(size_t sz, emitAttr opsz)
     //     ARM - This is currently broken on _TARGET_ARM_
     //     When nopSize is odd we misalign emitCurIGsize
     //
-    if (!(emitComp->opts.eeFlags & CORJIT_FLG_PREJIT) && !emitInInstrumentation &&
-        !emitIGisInProlog(emitCurIG) // don't do this in prolog or epilog
-        && !emitIGisInEpilog(emitCurIG) &&
+    if (!emitComp->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PREJIT) && !emitInInstrumentation &&
+        !emitIGisInProlog(emitCurIG) && // don't do this in prolog or epilog
+        !emitIGisInEpilog(emitCurIG) &&
         emitRandomNops // sometimes we turn off where exact codegen is needed (pinvoke inline)
         )
     {
@@ -1670,13 +1670,9 @@ void emitter::emitCreatePlaceholderIG(insGroupPlaceholderType igType,
     emitCurIGsize += MAX_PLACEHOLDER_IG_SIZE;
     emitCurCodeOffset += emitCurIGsize;
 
-#ifdef DEBUGGING_SUPPORT
-
 #if FEATURE_EH_FUNCLETS
     // Add the appropriate IP mapping debugging record for this placeholder
-    // group.
-
-    // genExitCode() adds the mapping for main function epilogs
+    // group. genExitCode() adds the mapping for main function epilogs.
     if (emitComp->opts.compDbgInfo)
     {
         if (igType == IGPT_FUNCLET_PROLOG)
@@ -1689,8 +1685,6 @@ void emitter::emitCreatePlaceholderIG(insGroupPlaceholderType igType,
         }
     }
 #endif // FEATURE_EH_FUNCLETS
-
-#endif // DEBUGGING_SUPPORT
 
     /* Start a new IG if more code follows */
 
@@ -2320,7 +2314,7 @@ bool emitter::emitNoGChelper(unsigned IHX)
 
         case CORINFO_HELP_PROF_FCN_LEAVE:
         case CORINFO_HELP_PROF_FCN_ENTER:
-#ifdef _TARGET_AMD64_
+#if defined(_TARGET_AMD64_) || (defined(_TARGET_X86_) && !defined(LEGACY_BACKEND))
         case CORINFO_HELP_PROF_FCN_TAILCALL:
 #endif
         case CORINFO_HELP_LLSH:
@@ -3414,8 +3408,6 @@ size_t emitter::emitIssue1Instr(insGroup* ig, instrDesc* id, BYTE** dp)
 
 #endif
 
-#if defined(DEBUGGING_SUPPORT) || defined(DEBUG)
-
     /* Did the size of the instruction match our expectations? */
 
     UNATIVE_OFFSET csz = (UNATIVE_OFFSET)(*dp - curInsAdr);
@@ -3446,8 +3438,6 @@ size_t emitter::emitIssue1Instr(insGroup* ig, instrDesc* id, BYTE** dp)
         IMPL_LIMITATION("Over-estimated instruction size");
 #endif
     }
-
-#endif
 
 #ifdef DEBUG
     /* Make sure the instruction descriptor size also matches our expectations */
@@ -6057,7 +6047,7 @@ unsigned char emitter::emitOutputLong(BYTE* dst, ssize_t val)
 #ifdef DEBUG
     if (emitComp->opts.dspEmit)
     {
-        printf("; emit_long 0%08XH\n", val);
+        printf("; emit_long 0%08XH\n", (int)val);
     }
 #ifdef _TARGET_AMD64_
     // if we're emitting code bytes, ensure that we've already emitted the rex prefix!
@@ -6081,15 +6071,69 @@ unsigned char emitter::emitOutputSizeT(BYTE* dst, ssize_t val)
     if (emitComp->opts.dspEmit)
     {
 #ifdef _TARGET_AMD64_
-        printf("; emit_size_t 0%016llXH\n", (size_t)val);
+        printf("; emit_size_t 0%016llXH\n", val);
 #else  // _TARGET_AMD64_
-        printf("; emit_size_t 0%08XH\n", (size_t)val);
+        printf("; emit_size_t 0%08XH\n", val);
 #endif // _TARGET_AMD64_
     }
 #endif // DEBUG
 
     return sizeof(size_t);
 }
+
+//------------------------------------------------------------------------
+// Wrappers to emitOutputByte, emitOutputWord, emitOutputLong, emitOutputSizeT
+// that take unsigned __int64 or size_t type instead of ssize_t. Used on RyuJIT/x86.
+//
+// Arguments:
+//    dst - passed through
+//    val - passed through
+//
+// Return Value:
+//    Same as wrapped function.
+//
+
+#if !defined(LEGACY_BACKEND) && defined(_TARGET_X86_)
+unsigned char emitter::emitOutputByte(BYTE* dst, size_t val)
+{
+    return emitOutputByte(dst, (ssize_t)val);
+}
+
+unsigned char emitter::emitOutputWord(BYTE* dst, size_t val)
+{
+    return emitOutputWord(dst, (ssize_t)val);
+}
+
+unsigned char emitter::emitOutputLong(BYTE* dst, size_t val)
+{
+    return emitOutputLong(dst, (ssize_t)val);
+}
+
+unsigned char emitter::emitOutputSizeT(BYTE* dst, size_t val)
+{
+    return emitOutputSizeT(dst, (ssize_t)val);
+}
+
+unsigned char emitter::emitOutputByte(BYTE* dst, unsigned __int64 val)
+{
+    return emitOutputByte(dst, (ssize_t)val);
+}
+
+unsigned char emitter::emitOutputWord(BYTE* dst, unsigned __int64 val)
+{
+    return emitOutputWord(dst, (ssize_t)val);
+}
+
+unsigned char emitter::emitOutputLong(BYTE* dst, unsigned __int64 val)
+{
+    return emitOutputLong(dst, (ssize_t)val);
+}
+
+unsigned char emitter::emitOutputSizeT(BYTE* dst, unsigned __int64 val)
+{
+    return emitOutputSizeT(dst, (ssize_t)val);
+}
+#endif // !defined(LEGACY_BACKEND) && defined(_TARGET_X86_)
 
 /*****************************************************************************
  *

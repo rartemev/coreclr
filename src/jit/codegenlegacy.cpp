@@ -485,9 +485,10 @@ void CodeGen::genIncRegBy(regNumber reg, ssize_t ival, GenTreePtr tree, var_type
         }
     }
 #endif
-
-    insFlags flags = setFlags ? INS_FLAGS_SET : INS_FLAGS_DONT_CARE;
-    inst_RV_IV(INS_add, reg, ival, emitActualTypeSize(dstType), flags);
+    {
+        insFlags flags = setFlags ? INS_FLAGS_SET : INS_FLAGS_DONT_CARE;
+        inst_RV_IV(INS_add, reg, ival, emitActualTypeSize(dstType), flags);
+    }
 
 #ifdef _TARGET_XARCH_
 UPDATE_LIVENESS:
@@ -4316,8 +4317,6 @@ emitJumpKind CodeGen::genCondSetFlags(GenTreePtr cond)
             addrReg1 = genMakeRvalueAddressable(op1, RBM_NONE, RegSet::KEEP_REG, false, smallOk);
         }
 
-        // #if defined(DEBUGGING_SUPPORT)
-
         /* Special case: comparison of two constants */
 
         // Needed if Importer doesn't call gtFoldExpr()
@@ -4334,8 +4333,6 @@ emitJumpKind CodeGen::genCondSetFlags(GenTreePtr cond)
 
             addrReg1 = genRegMask(op1->gtRegNum);
         }
-
-        // #endif
 
         /* Compare the operand against the constant */
 
@@ -7075,84 +7072,87 @@ void CodeGen::genCodeForTreeSmpBinArithLogOp(GenTreePtr tree, regMaskTP destReg,
 
     regTracker.rsTrackRegTrash(reg);
 
-    bool op2Released = false;
+    {
+        bool op2Released = false;
 
-    // For overflow instructions, tree->gtType is the accurate type,
-    // and gives us the size for the operands.
+        // For overflow instructions, tree->gtType is the accurate type,
+        // and gives us the size for the operands.
 
-    emitAttr opSize = emitTypeSize(treeType);
+        emitAttr opSize = emitTypeSize(treeType);
 
-    /* Compute the new value */
+        /* Compute the new value */
 
-    if (isArith && !op2->InReg() && (op2->OperKind() & GTK_CONST)
+        if (isArith && !op2->InReg() && (op2->OperKind() & GTK_CONST)
 #if !CPU_HAS_FP_SUPPORT
-        && (treeType == TYP_INT || treeType == TYP_I_IMPL)
+            && (treeType == TYP_INT || treeType == TYP_I_IMPL)
 #endif
-            )
-    {
-        ssize_t ival = op2->gtIntCon.gtIconVal;
-
-        if (oper == GT_ADD)
-        {
-            genIncRegBy(reg, ival, tree, treeType, ovfl);
-        }
-        else if (oper == GT_SUB)
-        {
-            if (ovfl && ((tree->gtFlags & GTF_UNSIGNED) ||
-                         (ival == ((treeType == TYP_INT) ? INT32_MIN : SSIZE_T_MIN))) // -0x80000000 == 0x80000000.
-                                                                                      // Therefore we can't use -ival.
                 )
-            {
-                /* For unsigned overflow, we have to use INS_sub to set
-                   the flags correctly */
+        {
+            ssize_t ival = op2->gtIntCon.gtIconVal;
 
-                genDecRegBy(reg, ival, tree);
+            if (oper == GT_ADD)
+            {
+                genIncRegBy(reg, ival, tree, treeType, ovfl);
             }
-            else
+            else if (oper == GT_SUB)
             {
-                /* Else, we simply add the negative of the value */
+                if (ovfl && ((tree->gtFlags & GTF_UNSIGNED) ||
+                             (ival == ((treeType == TYP_INT) ? INT32_MIN : SSIZE_T_MIN))) // -0x80000000 == 0x80000000.
+                    // Therefore we can't use -ival.
+                    )
+                {
+                    /* For unsigned overflow, we have to use INS_sub to set
+                    the flags correctly */
 
-                genIncRegBy(reg, -ival, tree, treeType, ovfl);
+                    genDecRegBy(reg, ival, tree);
+                }
+                else
+                {
+                    /* Else, we simply add the negative of the value */
+
+                    genIncRegBy(reg, -ival, tree, treeType, ovfl);
+                }
+            }
+            else if (oper == GT_MUL)
+            {
+                genMulRegBy(reg, ival, tree, treeType, ovfl);
             }
         }
-        else if (oper == GT_MUL)
+        else
         {
-            genMulRegBy(reg, ival, tree, treeType, ovfl);
+            // op2 could be a GT_COMMA (i.e. an assignment for a CSE def)
+            op2 = op2->gtEffectiveVal();
+            if (varTypeIsByte(treeType) && op2->InReg())
+            {
+                noway_assert(genRegMask(reg) & RBM_BYTE_REGS);
+
+                regNumber op2reg     = op2->gtRegNum;
+                regMaskTP op2regMask = genRegMask(op2reg);
+
+                if (!(op2regMask & RBM_BYTE_REGS))
+                {
+                    regNumber byteReg = regSet.rsGrabReg(RBM_BYTE_REGS);
+
+                    inst_RV_RV(INS_mov, byteReg, op2reg);
+                    regTracker.rsTrackRegTrash(byteReg);
+
+                    genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
+                    op2Released = true;
+
+                    op2->gtRegNum = byteReg;
+                }
+            }
+
+            inst_RV_TT(ins, reg, op2, 0, opSize, flags);
+        }
+
+        /* Free up anything that was tied up by the operand */
+
+        if (!op2Released)
+        {
+            genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
         }
     }
-    else
-    {
-        // op2 could be a GT_COMMA (i.e. an assignment for a CSE def)
-        op2 = op2->gtEffectiveVal();
-        if (varTypeIsByte(treeType) && op2->InReg())
-        {
-            noway_assert(genRegMask(reg) & RBM_BYTE_REGS);
-
-            regNumber op2reg     = op2->gtRegNum;
-            regMaskTP op2regMask = genRegMask(op2reg);
-
-            if (!(op2regMask & RBM_BYTE_REGS))
-            {
-                regNumber byteReg = regSet.rsGrabReg(RBM_BYTE_REGS);
-
-                inst_RV_RV(INS_mov, byteReg, op2reg);
-                regTracker.rsTrackRegTrash(byteReg);
-
-                genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
-                op2Released = true;
-
-                op2->gtRegNum = byteReg;
-            }
-        }
-
-        inst_RV_TT(ins, reg, op2, 0, opSize, flags);
-    }
-
-    /* Free up anything that was tied up by the operand */
-
-    if (!op2Released)
-        genDoneAddressable(op2, addrReg, RegSet::KEEP_REG);
-
     /* The result will be where the first operand is sitting */
 
     /* We must use RegSet::KEEP_REG since op1 can have a GC pointer here */
@@ -9709,7 +9709,7 @@ void CodeGen::genCodeForTreeSmpOp(GenTreePtr tree, regMaskTP destReg, regMaskTP 
     switch (oper)
     {
         case GT_ASG:
-            if (tree->OperIsBlkOp())
+            if (tree->OperIsBlkOp() && op1->gtOper != GT_LCL_VAR)
             {
                 genCodeForBlkOp(tree, destReg);
             }
@@ -10172,6 +10172,9 @@ void CodeGen::genCodeForTreeSmpOp(GenTreePtr tree, regMaskTP destReg, regMaskTP 
             if (op1 == NULL)
                 return;
 #endif
+            __fallthrough;
+
+        case GT_INIT_VAL:
 
             /* Generate the operand into some register */
 
@@ -11281,10 +11284,8 @@ void CodeGen::genCodeForTreeSmpOpAsg(GenTreePtr tree)
     bool        volat   = false; // Is this a volatile store
     regMaskTP   regGC;
     instruction ins;
-#ifdef DEBUGGING_SUPPORT
-    unsigned lclVarNum = compiler->lvaCount;
-    unsigned lclILoffs = DUMMY_INIT(0);
-#endif
+    unsigned    lclVarNum = compiler->lvaCount;
+    unsigned    lclILoffs = DUMMY_INIT(0);
 
 #ifdef _TARGET_ARM_
     if (tree->gtType == TYP_STRUCT)
@@ -11323,7 +11324,6 @@ void CodeGen::genCodeForTreeSmpOpAsg(GenTreePtr tree)
             noway_assert(varNum < compiler->lvaCount);
             varDsc = compiler->lvaTable + varNum;
 
-#ifdef DEBUGGING_SUPPORT
             /* For non-debuggable code, every definition of a lcl-var has
              * to be checked to see if we need to open a new scope for it.
              * Remember the local var info to call siCheckVarScope
@@ -11334,7 +11334,6 @@ void CodeGen::genCodeForTreeSmpOpAsg(GenTreePtr tree)
                 lclVarNum = varNum;
                 lclILoffs = op1->gtLclVar.gtLclILoffs;
             }
-#endif
 
             /* Check against dead store ? (with min opts we may have dead stores) */
 
@@ -11987,13 +11986,11 @@ void CodeGen::genCodeForTreeSmpOpAsg(GenTreePtr tree)
     genCodeForTreeSmpOpAsg_DONE_ASSG(tree, addrReg, REG_NA, ovfl);
 
 LExit:
-#ifdef DEBUGGING_SUPPORT
     /* For non-debuggable code, every definition of a lcl-var has
      * to be checked to see if we need to open a new scope for it.
      */
     if (lclVarNum < compiler->lvaCount)
         siCheckVarScope(lclVarNum, lclILoffs);
-#endif
 }
 #ifdef _PREFAST_
 #pragma warning(pop)
@@ -12424,14 +12421,12 @@ void CodeGen::genCodeForBBlist()
 
     regSet.rsSpillBeg();
 
-#ifdef DEBUGGING_SUPPORT
     /* Initialize the line# tracking logic */
 
     if (compiler->opts.compScopeInfo)
     {
         siInit();
     }
-#endif
 
 #ifdef _TARGET_X86_
     if (compiler->compTailCallUsed)
@@ -12762,27 +12757,7 @@ void CodeGen::genCodeForBBlist()
         genResetFPstkLevel();
 #endif // FEATURE_STACK_FP_X87
 
-#if !FEATURE_FIXED_OUT_ARGS
-        /* Check for inserted throw blocks and adjust genStackLevel */
-
-        if (!isFramePointerUsed() && compiler->fgIsThrowHlpBlk(block))
-        {
-            noway_assert(block->bbFlags & BBF_JMP_TARGET);
-
-            genStackLevel = compiler->fgThrowHlpBlkStkLevel(block) * sizeof(int);
-
-            if (genStackLevel)
-            {
-#ifdef _TARGET_X86_
-                getEmitter()->emitMarkStackLvl(genStackLevel);
-                inst_RV_IV(INS_add, REG_SPBASE, genStackLevel, EA_PTRSIZE);
-                genStackLevel = 0;
-#else  // _TARGET_X86_
-                NYI("Need emitMarkStackLvl()");
-#endif // _TARGET_X86_
-            }
-        }
-#endif // !FEATURE_FIXED_OUT_ARGS
+        genAdjustStackLevel(block);
 
         savedStkLvl = genStackLevel;
 
@@ -12790,7 +12765,6 @@ void CodeGen::genCodeForBBlist()
 
         compiler->compCurBB = block;
 
-#ifdef DEBUGGING_SUPPORT
         siBeginBlock(block);
 
         // BBF_INTERNAL blocks don't correspond to any single IL instruction.
@@ -12798,7 +12772,6 @@ void CodeGen::genCodeForBBlist()
             genIPmappingAdd((IL_OFFSETX)ICorDebugInfo::NO_MAPPING, true);
 
         bool firstMapping = true;
-#endif // DEBUGGING_SUPPORT
 
         /*---------------------------------------------------------------------
          *
@@ -12818,8 +12791,6 @@ void CodeGen::genCodeForBBlist()
         {
             noway_assert(stmt->gtOper == GT_STMT);
 
-#if defined(DEBUGGING_SUPPORT)
-
             /* Do we have a new IL-offset ? */
 
             if (stmt->gtStmt.gtStmtILoffsx != BAD_IL_OFFSET)
@@ -12828,8 +12799,6 @@ void CodeGen::genCodeForBBlist()
                 genIPmappingAdd(stmt->gtStmt.gtStmt.gtStmtILoffsx, firstMapping);
                 firstMapping = false;
             }
-
-#endif // DEBUGGING_SUPPORT
 
 #ifdef DEBUG
             if (stmt->gtStmt.gtStmtLastILoffs != BAD_IL_OFFSET)
@@ -12933,7 +12902,7 @@ void CodeGen::genCodeForBBlist()
             // harmless "inc" instruction (does not interfere with the exception
             // object).
 
-            if ((compiler->opts.eeFlags & CORJIT_FLG_BBINSTR) && (stmt == block->bbTreeList) &&
+            if (compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_BBINSTR) && (stmt == block->bbTreeList) &&
                 (block->bbCatchTyp && handlerGetsXcptnObj(block->bbCatchTyp)))
             {
                 nonVarPtrRegs &= ~RBM_EXCEPTION_OBJECT;
@@ -12960,13 +12929,9 @@ void CodeGen::genCodeForBBlist()
 
             noway_assert(stmt->gtOper == GT_STMT);
 
-#ifdef DEBUGGING_SUPPORT
             genEnsureCodeEmitted(stmt->gtStmt.gtStmtILoffsx);
-#endif
 
         } //-------- END-FOR each statement-tree of the current block ---------
-
-#ifdef DEBUGGING_SUPPORT
 
         if (compiler->opts.compScopeInfo && (compiler->info.compVarScopesCount > 0))
         {
@@ -12992,8 +12957,6 @@ void CodeGen::genCodeForBBlist()
                 siCloseAllOpenScopes();
             }
         }
-
-#endif // DEBUGGING_SUPPORT
 
         genStackLevel -= savedStkLvl;
 
@@ -13437,10 +13400,8 @@ void CodeGen::genCodeForTreeLng(GenTreePtr tree, regMaskTP needReg, regMaskTP av
         {
             case GT_ASG:
             {
-#ifdef DEBUGGING_SUPPORT
                 unsigned lclVarNum    = compiler->lvaCount;
                 unsigned lclVarILoffs = DUMMY_INIT(0);
-#endif
 
                 /* Is the target a local ? */
 
@@ -13455,7 +13416,6 @@ void CodeGen::genCodeForTreeLng(GenTreePtr tree, regMaskTP needReg, regMaskTP av
                     // No dead stores, (with min opts we may have dead stores)
                     noway_assert(!varDsc->lvTracked || compiler->opts.MinOpts() || !(op1->gtFlags & GTF_VAR_DEATH));
 
-#ifdef DEBUGGING_SUPPORT
                     /* For non-debuggable code, every definition of a lcl-var has
                      * to be checked to see if we need to open a new scope for it.
                      * Remember the local var info to call siCheckVarScope
@@ -13467,7 +13427,6 @@ void CodeGen::genCodeForTreeLng(GenTreePtr tree, regMaskTP needReg, regMaskTP av
                         lclVarNum    = varNum;
                         lclVarILoffs = op1->gtLclVar.gtLclILoffs;
                     }
-#endif
 
                     /* Has the variable been assigned to a register (pair) ? */
 
@@ -13755,13 +13714,11 @@ void CodeGen::genCodeForTreeLng(GenTreePtr tree, regMaskTP needReg, regMaskTP av
                 genUpdateLife(op1);
                 genUpdateLife(tree);
 
-#ifdef DEBUGGING_SUPPORT
                 /* For non-debuggable code, every definition of a lcl-var has
                  * to be checked to see if we need to open a new scope for it.
                  */
                 if (lclVarNum < compiler->lvaCount)
                     siCheckVarScope(lclVarNum, lclVarILoffs);
-#endif
             }
                 return;
 
@@ -18381,12 +18338,10 @@ regMaskTP CodeGen::genCodeForCall(GenTreePtr call, bool valUsed)
 
     CORINFO_SIG_INFO* sigInfo = nullptr;
 
-#ifdef DEBUGGING_SUPPORT
     if (compiler->opts.compDbgInfo && compiler->genCallSite2ILOffsetMap != NULL)
     {
         (void)compiler->genCallSite2ILOffsetMap->Lookup(call, &ilOffset);
     }
-#endif
 
     /* Make some sanity checks on the call node */
 
@@ -19462,6 +19417,7 @@ regMaskTP CodeGen::genCodeForCall(GenTreePtr call, bool valUsed)
                         regNumber indCallReg;
 
                         case IAT_VALUE:
+                        {
                             //------------------------------------------------------
                             // Non-virtual direct calls to known addressess
                             //
@@ -19469,7 +19425,24 @@ regMaskTP CodeGen::genCodeForCall(GenTreePtr call, bool valUsed)
                             // it be nice if they all did!
                             CLANG_FORMAT_COMMENT_ANCHOR;
 #ifdef _TARGET_ARM_
-                            if (!arm_Valid_Imm_For_BL((ssize_t)addr))
+                            // We may use direct call for some of recursive calls
+                            // as we can safely estimate the distance from the call site to the top of the method
+                            const int codeOffset = MAX_PROLOG_SIZE_BYTES +           // prolog size
+                                                   getEmitter()->emitCurCodeOffset + // offset of the current IG
+                                                   getEmitter()->emitCurIGsize +     // size of the current IG
+                                                   4;                                // size of the jump instruction
+                                                                                     // that we are now emitting
+                            if (compiler->gtIsRecursiveCall(call->AsCall()) && codeOffset <= -CALL_DIST_MAX_NEG)
+                            {
+                                getEmitter()->emitIns_Call(emitter::EC_FUNC_TOKEN, methHnd,
+                                                           INDEBUG_LDISASM_COMMA(sigInfo) NULL, // addr
+                                                           args, retSize, gcInfo.gcVarPtrSetCur,
+                                                           gcInfo.gcRegGCrefSetCur, gcInfo.gcRegByrefSetCur, ilOffset,
+                                                           REG_NA, REG_NA, 0, 0, // ireg, xreg, xmul, disp
+                                                           false,                // isJump
+                                                           emitter::emitNoGChelper(helperNum));
+                            }
+                            else if (!arm_Valid_Imm_For_BL((ssize_t)addr))
                             {
                                 // Load the address into a register and call  through a register
                                 indCallReg = regSet.rsGrabReg(RBM_ALLINT); // Grab an available register to use for the
@@ -19496,7 +19469,8 @@ regMaskTP CodeGen::genCodeForCall(GenTreePtr call, bool valUsed)
                                                            false, /* isJump */
                                                            emitter::emitNoGChelper(helperNum));
                             }
-                            break;
+                        }
+                        break;
 
                         case IAT_PVALUE:
                             //------------------------------------------------------
@@ -19908,7 +19882,7 @@ regMaskTP CodeGen::genCodeForCall(GenTreePtr call, bool valUsed)
 #if defined(_TARGET_X86_)
     if (call->gtFlags & GTF_CALL_UNMANAGED)
     {
-        if ((compiler->opts.eeFlags & CORJIT_FLG_PINVOKE_RESTORE_ESP) ||
+        if (compiler->opts.jitFlags->IsSet(JitFlags::JIT_FLAG_PINVOKE_RESTORE_ESP) ||
             compiler->compStressCompile(Compiler::STRESS_PINVOKE_RESTORE_ESP, 50))
         {
             // P/Invoke signature mismatch resilience - restore ESP to pre-call value. We would ideally
@@ -20618,9 +20592,11 @@ DONE:
     }
 #endif
 
-    /* Write the lvaShadowSPfirst stack frame slot */
-    noway_assert(compiler->lvaLocAllocSPvar != BAD_VAR_NUM);
-    getEmitter()->emitIns_S_R(ins_Store(TYP_I_IMPL), EA_PTRSIZE, REG_SPBASE, compiler->lvaLocAllocSPvar, 0);
+    /* Write the lvaLocAllocSPvar stack frame slot */
+    if (compiler->lvaLocAllocSPvar != BAD_VAR_NUM)
+    {
+        getEmitter()->emitIns_S_R(ins_Store(TYP_I_IMPL), EA_PTRSIZE, REG_SPBASE, compiler->lvaLocAllocSPvar, 0);
+    }
 
 #if STACK_PROBES
     // Don't think it is worth it the codegen complexity to embed this
@@ -20644,98 +20620,6 @@ DONE:
 
     return regCnt;
 }
-
-/*****************************************************************************/
-#ifdef DEBUGGING_SUPPORT
-/*****************************************************************************
- *                          genSetScopeInfo
- *
- * Called for every scope info piece to record by the main genSetScopeInfo()
- */
-
-void CodeGen::genSetScopeInfo(unsigned            which,
-                              UNATIVE_OFFSET      startOffs,
-                              UNATIVE_OFFSET      length,
-                              unsigned            varNum,
-                              unsigned            LVnum,
-                              bool                avail,
-                              Compiler::siVarLoc& varLoc)
-{
-    /* We need to do some mapping while reporting back these variables */
-
-    unsigned ilVarNum = compiler->compMap2ILvarNum(varNum);
-    noway_assert((int)ilVarNum != ICorDebugInfo::UNKNOWN_ILNUM);
-
-#ifdef _TARGET_X86_
-    // Non-x86 platforms are allowed to access all arguments directly
-    // so we don't need this code.
-
-    // Is this a varargs function?
-
-    if (compiler->info.compIsVarArgs && varNum != compiler->lvaVarargsHandleArg &&
-        varNum < compiler->info.compArgsCount && !compiler->lvaTable[varNum].lvIsRegArg)
-    {
-        noway_assert(varLoc.vlType == Compiler::VLT_STK || varLoc.vlType == Compiler::VLT_STK2);
-
-        // All stack arguments (except the varargs handle) have to be
-        // accessed via the varargs cookie. Discard generated info,
-        // and just find its position relative to the varargs handle
-
-        PREFIX_ASSUME(compiler->lvaVarargsHandleArg < compiler->info.compArgsCount);
-        if (!compiler->lvaTable[compiler->lvaVarargsHandleArg].lvOnFrame)
-        {
-            noway_assert(!compiler->opts.compDbgCode);
-            return;
-        }
-
-        // Can't check compiler->lvaTable[varNum].lvOnFrame as we don't set it for
-        // arguments of vararg functions to avoid reporting them to GC.
-        noway_assert(!compiler->lvaTable[varNum].lvRegister);
-        unsigned cookieOffset = compiler->lvaTable[compiler->lvaVarargsHandleArg].lvStkOffs;
-        unsigned varOffset    = compiler->lvaTable[varNum].lvStkOffs;
-
-        noway_assert(cookieOffset < varOffset);
-        unsigned offset     = varOffset - cookieOffset;
-        unsigned stkArgSize = compiler->compArgSize - intRegState.rsCalleeRegArgCount * sizeof(void*);
-        noway_assert(offset < stkArgSize);
-        offset = stkArgSize - offset;
-
-        varLoc.vlType                   = Compiler::VLT_FIXED_VA;
-        varLoc.vlFixedVarArg.vlfvOffset = offset;
-    }
-
-#endif // _TARGET_X86_
-
-    VarName name = NULL;
-
-#ifdef DEBUG
-
-    for (unsigned scopeNum = 0; scopeNum < compiler->info.compVarScopesCount; scopeNum++)
-    {
-        if (LVnum == compiler->info.compVarScopes[scopeNum].vsdLVnum)
-        {
-            name = compiler->info.compVarScopes[scopeNum].vsdName;
-        }
-    }
-
-    // Hang on to this compiler->info.
-
-    TrnslLocalVarInfo& tlvi = genTrnslLocalVarInfo[which];
-
-    tlvi.tlviVarNum    = ilVarNum;
-    tlvi.tlviLVnum     = LVnum;
-    tlvi.tlviName      = name;
-    tlvi.tlviStartPC   = startOffs;
-    tlvi.tlviLength    = length;
-    tlvi.tlviAvailable = avail;
-    tlvi.tlviVarLoc    = varLoc;
-
-#endif // DEBUG
-
-    compiler->eeSetLVinfo(which, startOffs, length, ilVarNum, LVnum, name, avail, varLoc);
-}
-
-#endif // DEBUGGING_SUPPORT
 
 /*****************************************************************************
  *
@@ -20841,10 +20725,9 @@ bool CodeGen::genRegTrashable(regNumber reg, GenTreePtr tree)
 */
 
 GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, // The node to start walking with.
-                                                          GenTreePtr relopNode, // The node before the startNode.
+                                                          GenTreePtr relopNode) // The node before the startNode.
                                                                                 // (It should either be NULL or
                                                                                 // a GTF_RELOP_QMARK node.)
-                                                          GenTreePtr asgdLclVar)
 {
     GenTreePtr tree;
 
@@ -20926,7 +20809,7 @@ GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, 
             case GT_LCL_FLD_ADDR:
             case GT_STORE_LCL_VAR:
             case GT_STORE_LCL_FLD:
-                fgMarkUseDef(tree->AsLclVarCommon(), asgdLclVar);
+                fgMarkUseDef(tree->AsLclVarCommon());
                 break;
 
             case GT_CLS_VAR:
@@ -20980,7 +20863,7 @@ GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, 
                     {
                         // Defines a local addr
                         assert(dummyLclVarTree != nullptr);
-                        fgMarkUseDef(dummyLclVarTree->AsLclVarCommon(), asgdLclVar);
+                        fgMarkUseDef(dummyLclVarTree->AsLclVarCommon());
                     }
                 }
                 break;
@@ -21083,7 +20966,7 @@ GenTreePtr Compiler::fgLegacyPerStatementLocalVarLiveness(GenTreePtr startNode, 
                     // fgCurDefSet and fgCurUseSet into local variables defSet_BeforeSplit and useSet_BeforeSplit.
                     // The cached values will be used to restore fgCurDefSet and fgCurUseSet once we see the GT_COLON
                     // node.
-                    tree = fgLegacyPerStatementLocalVarLiveness(tree->gtNext, tree, asgdLclVar);
+                    tree = fgLegacyPerStatementLocalVarLiveness(tree->gtNext, tree);
 
                     // We must have been returned here after seeing a GT_QMARK node.
                     noway_assert(tree->gtOper == GT_QMARK);

@@ -6,11 +6,6 @@
 #ifndef _TARGET_H_
 #define _TARGET_H_
 
-// Inform includers that we're in a context in which a target has been set.
-#if defined(_TARGET_X86_) || defined(_TARGET_AMD64_) || defined(_TARGET_ARM_)
-#define _TARGET_SET_
-#endif
-
 // If the UNIX_AMD64_ABI is defined make sure that _TARGET_AMD64_ is also defined.
 #if defined(UNIX_AMD64_ABI)
 #if !defined(_TARGET_AMD64_)
@@ -365,6 +360,9 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
 
 #endif // !LEGACY_BACKEND
 
+#ifdef FEATURE_SIMD
+  #define ALIGN_SIMD_TYPES         1       // whether SIMD type locals are to be aligned
+#endif // FEATURE_SIMD
 
   #define FEATURE_WRITE_BARRIER    1       // Generate the proper WriteBarrier calls for GC
   #define FEATURE_FIXED_OUT_ARGS   0       // X86 uses push instructions to pass args
@@ -589,7 +587,10 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
   #define REG_PINVOKE_TARGET_PARAM REG_EAX
   #define RBM_PINVOKE_TARGET_PARAM RBM_EAX
 
-  // IL stub's secret parameter (CORJIT_FLG_PUBLISH_SECRET_PARAM)
+  // GenericPInvokeCalliHelper cookie parameter
+  #define REG_PINVOKE_COOKIE_PARAM REG_STK
+
+  // IL stub's secret parameter (JitFlags::JIT_FLAG_PUBLISH_SECRET_PARAM)
   #define REG_SECRET_STUB_PARAM    REG_EAX
   #define RBM_SECRET_STUB_PARAM    RBM_EAX
 
@@ -677,6 +678,12 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
   #define RBM_ARG_1                RBM_EDX
 
   #define RBM_ARG_REGS            (RBM_ARG_0|RBM_ARG_1)
+
+  // The registers trashed by profiler enter/leave/tailcall hook
+  // See vm\i386\asmhelpers.asm for more details.
+  #define RBM_PROFILER_ENTER_TRASH     RBM_NONE
+  #define RBM_PROFILER_LEAVE_TRASH     RBM_NONE
+  #define RBM_PROFILER_TAILCALL_TRASH  (RBM_ALLINT & ~RBM_ARG_REGS)
 
   // What sort of reloc do we use for [disp32] address mode
   #define IMAGE_REL_BASED_DISP32   IMAGE_REL_BASED_HIGHLOW
@@ -976,7 +983,7 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
   #define RBM_PINVOKE_TARGET_PARAM          RBM_R10
   #define PREDICT_REG_PINVOKE_TARGET_PARAM  PREDICT_REG_R10
 
-  // IL stub's secret MethodDesc parameter (CORJIT_FLG_PUBLISH_SECRET_PARAM)
+  // IL stub's secret MethodDesc parameter (JitFlags::JIT_FLAG_PUBLISH_SECRET_PARAM)
   #define REG_SECRET_STUB_PARAM    REG_R10
   #define RBM_SECRET_STUB_PARAM    RBM_R10
 
@@ -1119,9 +1126,10 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
 #endif // !UNIX_AMD64_ABI
 
   // The registers trashed by profiler enter/leave/tailcall hook
-  // See vm\amd64\amshelpers.asm for more details.
-  #define RBM_PROFILER_ENTER_TRASH  RBM_CALLEE_TRASH
-  #define RBM_PROFILER_LEAVE_TRASH  (RBM_CALLEE_TRASH & ~(RBM_FLOATRET | RBM_INTRET))
+  // See vm\amd64\asmhelpers.asm for more details.
+  #define RBM_PROFILER_ENTER_TRASH     RBM_CALLEE_TRASH
+  #define RBM_PROFILER_LEAVE_TRASH     (RBM_CALLEE_TRASH & ~(RBM_FLOATRET | RBM_INTRET))
+  #define RBM_PROFILER_TAILCALL_TRASH  RBM_PROFILER_LEAVE_TRASH
 
   // The registers trashed by the CORINFO_HELP_STOP_FOR_GC helper.
 #ifdef FEATURE_UNIX_AMD64_STRUCT_PASSING
@@ -1218,6 +1226,7 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
   #define RBM_CALLEE_SAVED        (RBM_INT_CALLEE_SAVED | RBM_FLT_CALLEE_SAVED)
   #define RBM_CALLEE_TRASH        (RBM_INT_CALLEE_TRASH | RBM_FLT_CALLEE_TRASH)
   #define RBM_CALLEE_TRASH_NOGC   (RBM_R2|RBM_R3|RBM_LR)
+  #define REG_DEFAULT_HELPER_CALL_TARGET REG_R12
 
   #define RBM_ALLINT              (RBM_INT_CALLEE_SAVED | RBM_INT_CALLEE_TRASH)
   #define RBM_ALLFLOAT            (RBM_FLT_CALLEE_SAVED | RBM_FLT_CALLEE_TRASH)
@@ -1347,7 +1356,7 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
   #define RBM_PINVOKE_TARGET_PARAM          RBM_R12
   #define PREDICT_REG_PINVOKE_TARGET_PARAM  PREDICT_REG_R12
 
-  // IL stub's secret MethodDesc parameter (CORJIT_FLG_PUBLISH_SECRET_PARAM)
+  // IL stub's secret MethodDesc parameter (JitFlags::JIT_FLAG_PUBLISH_SECRET_PARAM)
   #define REG_SECRET_STUB_PARAM     REG_R12
   #define RBM_SECRET_STUB_PARAM     RBM_R12
 
@@ -1425,6 +1434,8 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
 
   #define REG_ARG_FIRST            REG_R0
   #define REG_ARG_LAST             REG_R3
+  #define REG_ARG_FP_FIRST         REG_F0
+  #define REG_ARG_FP_LAST          REG_F7
   #define INIT_ARG_STACK_SLOT      0                  // No outgoing reserved stack slots
 
   #define REG_ARG_0                REG_R0
@@ -1454,6 +1465,9 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
 
   #define JMP_DIST_SMALL_MAX_NEG  (-2048)
   #define JMP_DIST_SMALL_MAX_POS  (+2046)
+
+  #define CALL_DIST_MAX_NEG (-16777216)
+  #define CALL_DIST_MAX_POS (+16777214)
 
   #define JCC_DIST_SMALL_MAX_NEG  (-256)
   #define JCC_DIST_SMALL_MAX_POS  (+254)
@@ -1625,7 +1639,7 @@ typedef unsigned short regPairNoSmall; // arm: need 12 bits
   #define RBM_PINVOKE_TARGET_PARAM          RBM_R14
   #define PREDICT_REG_PINVOKE_TARGET_PARAM  PREDICT_REG_R14
 
-  // IL stub's secret MethodDesc parameter (CORJIT_FLG_PUBLISH_SECRET_PARAM)
+  // IL stub's secret MethodDesc parameter (JitFlags::JIT_FLAG_PUBLISH_SECRET_PARAM)
   #define REG_SECRET_STUB_PARAM     REG_R12
   #define RBM_SECRET_STUB_PARAM     RBM_R12
 

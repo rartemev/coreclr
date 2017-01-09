@@ -35,16 +35,12 @@ namespace System {
       public const double PI = 3.14159265358979323846;
       public const double E  = 2.7182818284590452354;
     
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Acos(double d);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Asin(double d);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Atan(double d);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Atan2(double y,double x);
       
@@ -52,15 +48,12 @@ namespace System {
         return Decimal.Ceiling(d);
       }
 
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Ceiling(double a);      
       
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Cos (double d);
 
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Cosh(double value);
       
@@ -68,11 +61,9 @@ namespace System {
         return Decimal.Floor(d);
       }
 
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Floor(double d);
       
-      [System.Security.SecuritySafeCritical]  // auto-generated
       private static unsafe double InternalRound(double value, int digits, MidpointRounding mode) {
         if (Abs(value) < doubleRoundLimit) {
             Double power10 = roundPower10Double[digits];
@@ -92,33 +83,27 @@ namespace System {
         return value;
       }           
       
-      [System.Security.SecuritySafeCritical]  // auto-generated
       private unsafe static double InternalTruncate(double d) {
         SplitFractionDouble(&d); 
         return d;                
       }            
       
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Sin(double a);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Tan(double a);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Sinh(double value);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Tanh(double value);
 
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Round(double a);
 
       public static double Round(double value, int digits)
       {
            if ((digits < 0) || (digits > maxRoundingDigits))
-               throw new ArgumentOutOfRangeException("digits", Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
+               throw new ArgumentOutOfRangeException(nameof(digits), Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
            Contract.EndContractBlock();
            return InternalRound(value, digits, MidpointRounding.ToEven);                     
       }
@@ -129,9 +114,9 @@ namespace System {
       
       public static double Round(double value, int digits, MidpointRounding mode) {
           if ((digits < 0) || (digits > maxRoundingDigits))
-              throw new ArgumentOutOfRangeException("digits", Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
+              throw new ArgumentOutOfRangeException(nameof(digits), Environment.GetResourceString("ArgumentOutOfRange_RoundingDigits"));
           if (mode < MidpointRounding.ToEven || mode > MidpointRounding.AwayFromZero) {            
-              throw new ArgumentException(Environment.GetResourceString("Argument_InvalidEnumValue", mode, "MidpointRounding"), "mode");
+              throw new ArgumentException(Environment.GetResourceString("Argument_InvalidEnumValue", mode, nameof(MidpointRounding)), nameof(mode));
           }
           Contract.EndContractBlock();
           return InternalRound(value, digits, mode);                           
@@ -153,7 +138,6 @@ namespace System {
         return Decimal.Round(d, decimals, mode);
       }
 
-      [System.Security.SecurityCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       private static unsafe extern double SplitFractionDouble(double* value);
       
@@ -165,20 +149,15 @@ namespace System {
         return InternalTruncate(d);
       }
             
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [ReliabilityContract(Consistency.WillNotCorruptState, Cer.Success)]
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Sqrt(double d);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Log (double d);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Log10(double d);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Exp(double d);
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       public static extern double Pow(double x, double y);
             
@@ -284,7 +263,6 @@ namespace System {
           return -value;
       }
     
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       extern public static float Abs(float value);
         // This is special code to handle NaN (We need to make sure NaN's aren't 
@@ -296,7 +274,6 @@ namespace System {
         // it runs the else case, which returns +value instead of negating it. 
         //  return (value < 0) ? -value : value;
     
-      [System.Security.SecuritySafeCritical]  // auto-generated
       [MethodImplAttribute(MethodImplOptions.InternalCall)]
       extern public static double Abs(double value);
         // This is special code to handle NaN (We need to make sure NaN's aren't 
@@ -726,13 +703,21 @@ namespace System {
         }
 
         public static int DivRem(int a, int b, out int result) {
-            result =  a%b;
-            return a/b;
+            // TODO https://github.com/dotnet/coreclr/issues/3439:
+            // Restore to using % and / when the JIT is able to eliminate one of the idivs.
+            // In the meantime, a * and - is measurably faster than an extra /.
+            int div = a / b;
+            result = a - (div * b);
+            return div;
         }
 
         public static long DivRem(long a, long b, out long result) {
-            result =  a%b;
-            return a/b;
+            // TODO https://github.com/dotnet/coreclr/issues/3439:
+            // Restore to using % and / when the JIT is able to eliminate one of the idivs.
+            // In the meantime, a * and - is measurably faster than an extra /.
+            long div = a / b;
+            result = a - (div * b);
+            return div;
         }
     }
 }

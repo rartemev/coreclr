@@ -24,6 +24,7 @@ namespace System {
     using System.Runtime.InteropServices;    
     using System.Runtime.Versioning;
     using Microsoft.Win32;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
     using System.Security;
 
@@ -67,7 +68,6 @@ namespace System {
         // than 0x80) before security is fully initialized.  Without security initialized, we can't grab resources (the nlp's)
         // from the assembly.  This provides a workaround for that problem and should NOT be used anywhere else.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         internal unsafe static string SmallCharToUpper(string strIn) {
             Contract.Requires(strIn != null);
             Contract.EndContractBlock();
@@ -83,7 +83,7 @@ namespace System {
 
                 for(int i = 0; i < length; i++) {
                     int c = inBuff[i];
-                    Contract.Assert(c <= 0x7F, "string has to be ASCII");
+                    Debug.Assert(c <= 0x7F, "string has to be ASCII");
 
                     // uppercase - notice that we need just one compare
                     if ((uint)(c - 'a') <= (uint)('z' - 'a')) c -= 0x20;
@@ -91,7 +91,7 @@ namespace System {
                     outBuff[i] = (char)c;
                 }
 
-                Contract.Assert(outBuff[length]=='\0', "outBuff[length]=='\0'");
+                Debug.Assert(outBuff[length]=='\0', "outBuff[length]=='\0'");
             }
             return strOut;
         }
@@ -102,7 +102,6 @@ namespace System {
         [System.Runtime.CompilerServices.IndexerName("Chars")]
         public extern char this[int index] {
             [MethodImpl(MethodImplOptions.InternalCall)]
-            [System.Security.SecuritySafeCritical] // public member
             get;
         }
 
@@ -111,19 +110,18 @@ namespace System {
         // sourceIndex + count - 1 to the character array buffer, beginning
         // at destinationIndex.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe public void CopyTo(int sourceIndex, char[] destination, int destinationIndex, int count)
         {
             if (destination == null)
-                throw new ArgumentNullException("destination");
+                throw new ArgumentNullException(nameof(destination));
             if (count < 0)
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_NegativeCount"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_NegativeCount"));
             if (sourceIndex < 0)
-                throw new ArgumentOutOfRangeException("sourceIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(sourceIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
             if (count > Length - sourceIndex)
-                throw new ArgumentOutOfRangeException("sourceIndex", Environment.GetResourceString("ArgumentOutOfRange_IndexCount"));
+                throw new ArgumentOutOfRangeException(nameof(sourceIndex), Environment.GetResourceString("ArgumentOutOfRange_IndexCount"));
             if (destinationIndex > destination.Length - count || destinationIndex < 0)
-                throw new ArgumentOutOfRangeException("destinationIndex", Environment.GetResourceString("ArgumentOutOfRange_IndexCount"));
+                throw new ArgumentOutOfRangeException(nameof(destinationIndex), Environment.GetResourceString("ArgumentOutOfRange_IndexCount"));
             Contract.EndContractBlock();
 
             // Note: fixed does not like empty arrays
@@ -136,7 +134,6 @@ namespace System {
         }
         
         // Returns the entire string as an array of characters.
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe public char[] ToCharArray() {
             int length = Length;
             if (length > 0)
@@ -148,24 +145,19 @@ namespace System {
                 }
                 return chars;
             }
-            
-#if FEATURE_CORECLR
+
             return Array.Empty<char>();
-#else
-            return new char[0];
-#endif
         }
     
         // Returns a substring of this string as an array of characters.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe public char[] ToCharArray(int startIndex, int length)
         {
             // Range check everything.
             if (startIndex < 0 || startIndex > Length || startIndex > Length - length)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
             if (length < 0)
-                throw new ArgumentOutOfRangeException("length", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(length), Environment.GetResourceString("ArgumentOutOfRange_Index"));
             Contract.EndContractBlock();
 
             if (length > 0)
@@ -177,12 +169,8 @@ namespace System {
                 }
                 return chars;
             }
-            
-#if FEATURE_CORECLR
+
             return Array.Empty<char>();
-#else
-            return new char[0];
-#endif
         }
 
         [Pure]
@@ -210,7 +198,6 @@ namespace System {
         //
         // Spec#: Add postcondition in a contract assembly.  Potential perf problem.
         public extern int Length {
-            [System.Security.SecuritySafeCritical]  // auto-generated
             [MethodImplAttribute(MethodImplOptions.InternalCall)]
             get;
         }
@@ -218,36 +205,30 @@ namespace System {
         // Creates a new string with the characters copied in from ptr. If
         // ptr is null, a 0-length string (like String.Empty) is returned.
         //
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false), MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe public extern String(char *value);
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false), MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe public extern String(char *value, int startIndex, int length);
     
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false), MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe public extern String(sbyte *value);
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false), MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe public extern String(sbyte *value, int startIndex, int length);
 
-        [System.Security.SecurityCritical]  // auto-generated
         [CLSCompliant(false), MethodImplAttribute(MethodImplOptions.InternalCall)]
         unsafe public extern String(sbyte *value, int startIndex, int length, Encoding enc);
         
-        [System.Security.SecurityCritical]  // auto-generated
         unsafe static private String CreateString(sbyte *value, int startIndex, int length, Encoding enc) {            
             if (enc == null)
                 return new String(value, startIndex, length); // default to ANSI
 
             if (length < 0)
-                throw new ArgumentOutOfRangeException("length", Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
+                throw new ArgumentOutOfRangeException(nameof(length), Environment.GetResourceString("ArgumentOutOfRange_NeedNonNegNum"));
             if (startIndex < 0)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_StartIndex"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_StartIndex"));
             if ((value + startIndex) < value) {
                 // overflow check
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
             }
 
             byte [] b = new byte[length];
@@ -258,7 +239,7 @@ namespace System {
             catch(NullReferenceException) {
                 // If we got a NullReferencException. It means the pointer or 
                 // the index is out of range
-                throw new ArgumentOutOfRangeException("value", 
+                throw new ArgumentOutOfRangeException(nameof(value), 
                         Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));                
             }
 
@@ -267,7 +248,6 @@ namespace System {
         
         // Helper for encodings so they can talk to our buffer directly
         // stringLength must be the exact size we'll expect
-        [System.Security.SecurityCritical]  // auto-generated
         unsafe static internal String CreateStringFromEncoding(
             byte* bytes, int byteLength, Encoding encoding)
         {
@@ -276,7 +256,7 @@ namespace System {
 
             // Get our string length
             int stringLength = encoding.GetCharCount(bytes, byteLength, null);
-            Contract.Assert(stringLength >= 0, "stringLength >= 0");
+            Debug.Assert(stringLength >= 0, "stringLength >= 0");
             
             // They gave us an empty string if they needed one
             // 0 bytelength might be possible if there's something in an encoder
@@ -287,7 +267,7 @@ namespace System {
             fixed(char* pTempChars = &s.m_firstChar)
             {
                 int doubleCheck = encoding.GetChars(bytes, byteLength, pTempChars, stringLength, null);
-                Contract.Assert(stringLength == doubleCheck, 
+                Debug.Assert(stringLength == doubleCheck, 
                     "Expected encoding.GetChars to return same length as encoding.GetCharCount");
             }
 
@@ -297,7 +277,6 @@ namespace System {
         // This is only intended to be used by char.ToString.
         // It is necessary to put the code in this class instead of Char, since m_firstChar is a private member.
         // Making m_firstChar internal would be dangerous since it would make it much easier to break String's immutability.
-        [SecuritySafeCritical]
         internal static string CreateFromChar(char c)
         {
             string result = FastAllocateString(1);
@@ -305,7 +284,6 @@ namespace System {
             return result;
         }
                 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe internal int GetBytesFromEncoding(byte* pbNativeBuffer, int cbNativeBuffer,Encoding encoding)
         {
             // encoding == Encoding.UTF8
@@ -315,10 +293,9 @@ namespace System {
             }            
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe internal int ConvertToAnsi(byte *pbNativeBuffer, int cbNativeBuffer, bool fBestFit, bool fThrowOnUnmappableChar)
         {
-            Contract.Assert(cbNativeBuffer >= (Length + 1) * Marshal.SystemMaxDBCSCharSize, "Insufficient buffer length passed to ConvertToAnsi");
+            Debug.Assert(cbNativeBuffer >= (Length + 1) * Marshal.SystemMaxDBCSCharSize, "Insufficient buffer length passed to ConvertToAnsi");
 
             const uint CP_ACP = 0;
             int nb;
@@ -363,7 +340,6 @@ namespace System {
 #endif
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public bool IsNormalized(NormalizationForm normalizationForm)
         {
 #if !FEATURE_NORM_IDNA_ONLY
@@ -391,7 +367,6 @@ namespace System {
 #endif
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public String Normalize(NormalizationForm normalizationForm)
         {
 #if !FEATURE_NORM_IDNA_ONLY        
@@ -408,7 +383,6 @@ namespace System {
             return Normalization.Normalize(this, normalizationForm);
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal extern static String FastAllocateString(int length);
 
@@ -416,7 +390,6 @@ namespace System {
         // be created from the characters in value between startIndex and
         // startIndex + length - 1.
         //
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern String(char [] value, int startIndex, int length);
     
@@ -424,17 +397,14 @@ namespace System {
         // created from the characters in value.
         //
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern String(char [] value);
 
-        [System.Security.SecurityCritical]  // auto-generated
         internal static unsafe void wstrcpy(char *dmem, char *smem, int charCount)
         {
             Buffer.Memcpy((byte*)dmem, (byte*)smem, charCount * 2); // 2 used everywhere instead of sizeof(char)
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private String CtorCharArray(char [] value)
         {
             if (value != null && value.Length != 0) {
@@ -451,20 +421,19 @@ namespace System {
                 return String.Empty;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private String CtorCharArrayStartLength(char [] value, int startIndex, int length)
         {
             if (value == null)
-                throw new ArgumentNullException("value");
+                throw new ArgumentNullException(nameof(value));
 
             if (startIndex < 0)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_StartIndex"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_StartIndex"));
 
             if (length < 0)
-                throw new ArgumentOutOfRangeException("length", Environment.GetResourceString("ArgumentOutOfRange_NegativeLength"));
+                throw new ArgumentOutOfRangeException(nameof(length), Environment.GetResourceString("ArgumentOutOfRange_NegativeLength"));
 
             if (startIndex > value.Length - length)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
             Contract.EndContractBlock();
 
             if (length > 0) {
@@ -481,7 +450,6 @@ namespace System {
                 return String.Empty;
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         private String CtorCharCount(char c, int count)
         {
             if (count > 0) {
@@ -519,10 +487,9 @@ namespace System {
             else if (count == 0)
                 return String.Empty;
             else
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_MustBeNonNegNum", "count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_MustBeNonNegNum", nameof(count)));
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private static unsafe int wcslen(char *ptr)
         {
             char *end = ptr;
@@ -553,7 +520,7 @@ namespace System {
                 end += 2;
             }
 
-            Contract.Assert(end[0] == 0 || end[1] == 0);
+            Debug.Assert(end[0] == 0 || end[1] == 0);
             if (end[0] != 0) end++;
 #else // !BIT64
             // Based on https://graphics.stanford.edu/~seander/bithacks.html#ZeroInWord
@@ -610,14 +577,13 @@ namespace System {
 #endif // !BIT64
 
             FoundZero:
-            Contract.Assert(*end == 0);
+            Debug.Assert(*end == 0);
 
             int count = (int)(end - ptr);
 
             return count;
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private unsafe String CtorCharPtr(char *ptr)
         {
             if (ptr == null)
@@ -628,7 +594,7 @@ namespace System {
                 throw new ArgumentException(Environment.GetResourceString("Arg_MustBeStringPtrNotAtom"));
 #endif // FEATURE_PAL
 
-            Contract.Assert(this == null, "this == null");        // this is the string constructor, we allocate it
+            Debug.Assert(this == null, "this == null");        // this is the string constructor, we allocate it
 
             try {
                 int count = wcslen(ptr);
@@ -641,27 +607,26 @@ namespace System {
                 return result;
             }
             catch (NullReferenceException) {
-                throw new ArgumentOutOfRangeException("ptr", Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
+                throw new ArgumentOutOfRangeException(nameof(ptr), Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
             }
         }
 
-        [System.Security.SecurityCritical]  // auto-generated
         private unsafe String CtorCharPtrStartLength(char *ptr, int startIndex, int length)
         {
             if (length < 0) {
-                throw new ArgumentOutOfRangeException("length", Environment.GetResourceString("ArgumentOutOfRange_NegativeLength"));
+                throw new ArgumentOutOfRangeException(nameof(length), Environment.GetResourceString("ArgumentOutOfRange_NegativeLength"));
             }
 
             if (startIndex < 0) {
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_StartIndex"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_StartIndex"));
             }
             Contract.EndContractBlock();
-            Contract.Assert(this == null, "this == null");        // this is the string constructor, we allocate it
+            Debug.Assert(this == null, "this == null");        // this is the string constructor, we allocate it
 
             char *pFrom = ptr + startIndex;
             if (pFrom < ptr) {
                 // This means that the pointer operation has had an overflow
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
             }
 
             if (length == 0)
@@ -675,11 +640,10 @@ namespace System {
                 return result;
             }
             catch (NullReferenceException) {
-                throw new ArgumentOutOfRangeException("ptr", Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
+                throw new ArgumentOutOfRangeException(nameof(ptr), Environment.GetResourceString("ArgumentOutOfRange_PartialWCHAR"));
             }
         }
 
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern String(char c, int count);
 
@@ -705,10 +669,9 @@ namespace System {
             return this;
         }
     
-        [System.Security.SecuritySafeCritical]  // auto-generated
         unsafe public static String Copy (String str) {
             if (str==null) {
-                throw new ArgumentNullException("str");
+                throw new ArgumentNullException(nameof(str));
             }
             Contract.Ensures(Contract.Result<String>() != null);
             Contract.EndContractBlock();
@@ -724,10 +687,9 @@ namespace System {
              return result;
         }
         
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static String Intern(String str) {
             if (str==null) {
-                throw new ArgumentNullException("str");
+                throw new ArgumentNullException(nameof(str));
             }
             Contract.Ensures(Contract.Result<String>().Length == str.Length);
             Contract.Ensures(str.Equals(Contract.Result<String>()));
@@ -737,10 +699,9 @@ namespace System {
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public static String IsInterned(String str) {
             if (str==null) {
-                throw new ArgumentNullException("str");
+                throw new ArgumentNullException(nameof(str));
             }
             Contract.Ensures(Contract.Result<String>() == null || Contract.Result<String>().Length == str.Length);
             Contract.EndContractBlock();
@@ -834,20 +795,16 @@ namespace System {
 
         // Is this a string that can be compared quickly (that is it has only characters > 0x80 
         // and not a - or '
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal extern bool IsFastSort();
         // Is this a string that only contains characters < 0x80.
-        [System.Security.SecurityCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal extern bool IsAscii();
 
         // Set extra byte for odd-sized strings that came from interop as BSTR.
-        [System.Security.SecurityCritical]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal extern void SetTrailByte(byte data);
         // Try to retrieve the extra byte - returns false if not present.
-        [System.Security.SecurityCritical]
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         internal extern bool TryGetTrailByte(out byte data);
 
@@ -874,7 +831,6 @@ namespace System {
         }
 
          // Copies the source String (byte buffer) to the destination IntPtr memory allocated with len bytes.
-        [System.Security.SecurityCritical]  // auto-generated
         internal unsafe static void InternalCopy(String src, IntPtr dest,int len)
         {
             if (len == 0)
@@ -884,6 +840,12 @@ namespace System {
                 byte* dstPtr = (byte*) dest;
                 Buffer.Memcpy(dstPtr, srcPtr, len);
             }
-        }      
+        }
+
+#if FEATURE_SPAN_OF_T
+        internal ref char GetFirstCharRef() {
+            return ref m_firstChar;
+        }
+#endif
     }
 }

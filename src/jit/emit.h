@@ -427,6 +427,11 @@ public:
         // There seem to be some cases where this is used without being initialized via CodeGen::inst_set_SV_var().
         emitVarRefOffs = 0;
 #endif // DEBUG
+
+#ifdef _TARGET_XARCH_
+        SetUseSSE3_4(false);
+#endif // _TARGET_XARCH_
+
 #ifdef FEATURE_AVX_SUPPORT
         SetUseAVX(false);
 #endif // FEATURE_AVX_SUPPORT
@@ -1659,6 +1664,18 @@ private:
     unsigned char emitOutputLong(BYTE* dst, ssize_t val);
     unsigned char emitOutputSizeT(BYTE* dst, ssize_t val);
 
+#if !defined(LEGACY_BACKEND) && defined(_TARGET_X86_)
+    unsigned char emitOutputByte(BYTE* dst, size_t val);
+    unsigned char emitOutputWord(BYTE* dst, size_t val);
+    unsigned char emitOutputLong(BYTE* dst, size_t val);
+    unsigned char emitOutputSizeT(BYTE* dst, size_t val);
+
+    unsigned char emitOutputByte(BYTE* dst, unsigned __int64 val);
+    unsigned char emitOutputWord(BYTE* dst, unsigned __int64 val);
+    unsigned char emitOutputLong(BYTE* dst, unsigned __int64 val);
+    unsigned char emitOutputSizeT(BYTE* dst, unsigned __int64 val);
+#endif // !defined(LEGACY_BACKEND) && defined(_TARGET_X86_)
+
     size_t emitIssue1Instr(insGroup* ig, instrDesc* id, BYTE** dp);
     size_t emitOutputInstr(insGroup* ig, instrDesc* id, BYTE** dp);
 
@@ -1822,8 +1839,12 @@ private:
     void emitInsertIGAfter(insGroup* insertAfterIG, insGroup* ig);
 
     void emitNewIG();
+
+#if !defined(JIT32_GCENCODER)
     void emitDisableGC();
     void emitEnableGC();
+#endif // !defined(JIT32_GCENCODER)
+
     void emitGenIG(insGroup* ig);
     insGroup* emitSavIG(bool emitAdd = false);
     void emitNxtIG(bool emitAdd = false);
@@ -2707,6 +2728,7 @@ inline void emitter::emitNewIG()
     emitGenIG(ig);
 }
 
+#if !defined(JIT32_GCENCODER)
 // Start a new instruction group that is not interruptable
 inline void emitter::emitDisableGC()
 {
@@ -2736,6 +2758,7 @@ inline void emitter::emitEnableGC()
     // instruction groups.
     emitForceNewIG = true;
 }
+#endif // !defined(JIT32_GCENCODER)
 
 /*****************************************************************************/
 #endif // _EMIT_H_

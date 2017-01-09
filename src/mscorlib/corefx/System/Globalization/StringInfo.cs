@@ -13,6 +13,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Runtime.Serialization;
 
@@ -20,7 +21,7 @@ namespace System.Globalization
 {
     [Serializable]
     [System.Runtime.InteropServices.ComVisible(true)]
-    public partial class StringInfo
+    public class StringInfo
     {
         [OptionalField(VersionAdded = 2)] 
         private string _str;
@@ -127,11 +128,11 @@ namespace System.Globalization
                 // Just decide which error to give depending on the param they gave us....
                 if (startingTextElement < 0) 
                 {
-                    throw new ArgumentOutOfRangeException("startingTextElement", SR.ArgumentOutOfRange_NeedPosNum);
+                    throw new ArgumentOutOfRangeException(nameof(startingTextElement), SR.ArgumentOutOfRange_NeedPosNum);
                 }
                 else
                 {
-                    throw new ArgumentOutOfRangeException("startingTextElement", SR.Arg_ArgumentOutOfRangeException);
+                    throw new ArgumentOutOfRangeException(nameof(startingTextElement), SR.Arg_ArgumentOutOfRangeException);
                 }
             }
             return (SubstringByTextElements(startingTextElement, Indexes.Length - startingTextElement));
@@ -141,22 +142,22 @@ namespace System.Globalization
         {
             if (startingTextElement < 0)
             {
-                throw new ArgumentOutOfRangeException("startingTextElement", SR.ArgumentOutOfRange_NeedPosNum);
+                throw new ArgumentOutOfRangeException(nameof(startingTextElement), SR.ArgumentOutOfRange_NeedPosNum);
             }
 
             if (this.String.Length == 0 || startingTextElement >= Indexes.Length)
             {
-                throw new ArgumentOutOfRangeException("startingTextElement", SR.Arg_ArgumentOutOfRangeException);
+                throw new ArgumentOutOfRangeException(nameof(startingTextElement), SR.Arg_ArgumentOutOfRangeException);
             }
 
             if (lengthInTextElements < 0)
             {
-                throw new ArgumentOutOfRangeException("lengthInTextElements", SR.ArgumentOutOfRange_NeedPosNum);
+                throw new ArgumentOutOfRangeException(nameof(lengthInTextElements), SR.ArgumentOutOfRange_NeedPosNum);
             }
 
             if (startingTextElement > Indexes.Length - lengthInTextElements)
             {
-                throw new ArgumentOutOfRangeException("lengthInTextElements", SR.Arg_ArgumentOutOfRangeException);
+                throw new ArgumentOutOfRangeException(nameof(lengthInTextElements), SR.Arg_ArgumentOutOfRangeException);
             }
 
             int start = Indexes[startingTextElement];
@@ -213,8 +214,8 @@ namespace System.Globalization
 
         internal static int GetCurrentTextElementLen(string str, int index, int len, ref UnicodeCategory ucCurrent, ref int currentCharCount)
         {
-            Contract.Assert(index >= 0 && len >= 0, "StringInfo.GetCurrentTextElementLen() : index = " + index + ", len = " + len);
-            Contract.Assert(index < len, "StringInfo.GetCurrentTextElementLen() : index = " + index + ", len = " + len);
+            Debug.Assert(index >= 0 && len >= 0, "StringInfo.GetCurrentTextElementLen() : index = " + index + ", len = " + len);
+            Debug.Assert(index < len, "StringInfo.GetCurrentTextElementLen() : index = " + index + ", len = " + len);
             if (index + currentCharCount == len)
             {
                 // This is the last character/surrogate in the string.
@@ -281,7 +282,7 @@ namespace System.Globalization
             //
             if (str == null)
             {
-                throw new ArgumentNullException("str");
+                throw new ArgumentNullException(nameof(str));
             }
             Contract.EndContractBlock();
 
@@ -292,7 +293,7 @@ namespace System.Globalization
                 {
                     return (String.Empty);
                 }
-                throw new ArgumentOutOfRangeException("index", SR.ArgumentOutOfRange_Index);
+                throw new ArgumentOutOfRangeException(nameof(index), SR.ArgumentOutOfRange_Index);
             }
 
             int charLen;
@@ -312,14 +313,14 @@ namespace System.Globalization
             //
             if (str == null)
             {
-                throw new ArgumentNullException("str");
+                throw new ArgumentNullException(nameof(str));
             }
             Contract.EndContractBlock();
 
             int len = str.Length;
             if (index < 0 || (index > len))
             {
-                throw new ArgumentOutOfRangeException("index", SR.ArgumentOutOfRange_Index);
+                throw new ArgumentOutOfRangeException(nameof(index), SR.ArgumentOutOfRange_Index);
             }
 
             return (new TextElementEnumerator(str, index, len));
@@ -341,7 +342,7 @@ namespace System.Globalization
         {
             if (str == null)
             {
-                throw new ArgumentNullException("str");
+                throw new ArgumentNullException(nameof(str));
             }
             Contract.EndContractBlock();
 

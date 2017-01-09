@@ -22,12 +22,9 @@ SVAL_IMPL_INIT(uint32_t,IGCHeap,maxGeneration,2);
 
 IGCHeapInternal* g_theGCHeap;
 
-/* global versions of the card table and brick table */ 
-GPTR_IMPL(uint32_t,g_card_table);
-
-/* absolute bounds of the GC memory */
-GPTR_IMPL_INIT(uint8_t,g_lowest_address,0);
-GPTR_IMPL_INIT(uint8_t,g_highest_address,0);
+#ifdef FEATURE_STANDALONE_GC
+IGCToCLR* g_theGCToCLR;
+#endif // FEATURE_STANDALONE_GC
 
 #ifdef GC_CONFIG_DRIVEN
 GARY_IMPL(size_t, gc_global_mechanisms, MAX_GLOBAL_GC_MECHANISMS_COUNT);
@@ -35,14 +32,15 @@ GARY_IMPL(size_t, gc_global_mechanisms, MAX_GLOBAL_GC_MECHANISMS_COUNT);
 
 #ifndef DACCESS_COMPILE
 
-uint8_t* g_ephemeral_low = (uint8_t*)1;
-uint8_t* g_ephemeral_high = (uint8_t*)~0;
-
 #ifdef WRITE_BARRIER_CHECK
 uint8_t* g_GCShadow;
 uint8_t* g_GCShadowEnd;
 uint8_t* g_shadow_lowest_address = NULL;
 #endif
+
+uint32_t* g_gc_card_table;
+uint8_t* g_gc_lowest_address  = 0;
+uint8_t* g_gc_highest_address = 0;
 
 VOLATILE(int32_t) m_GCLock = -1;
 
@@ -137,7 +135,6 @@ void InitializeHeapType(bool bServerHeap)
 IGCHeap* InitializeGarbageCollector(IGCToCLR* clrToGC)
 {
     LIMITED_METHOD_CONTRACT;
-    UNREFERENCED_PARAMETER(clrToGC);
 
     IGCHeapInternal* heap;
 #ifdef FEATURE_SVR_GC
@@ -148,6 +145,15 @@ IGCHeap* InitializeGarbageCollector(IGCToCLR* clrToGC)
 #endif
 
     g_theGCHeap = heap;
+
+#ifdef FEATURE_STANDALONE_GC
+    assert(clrToGC != nullptr);
+    g_theGCToCLR = clrToGC;
+#else
+    UNREFERENCED_PARAMETER(clrToGC);
+    assert(clrToGC == nullptr);
+#endif
+
     return heap;
 }
 

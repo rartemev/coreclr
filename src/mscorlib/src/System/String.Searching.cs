@@ -29,13 +29,12 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe int IndexOf(char value, int startIndex, int count) {
             if (startIndex < 0 || startIndex > Length)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
 
             if (count < 0 || count > Length - startIndex)
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_Count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_Count"));
 
             fixed (char* pChars = &m_firstChar)
             {
@@ -85,7 +84,6 @@ namespace System
         }
     
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern int IndexOfAny(char [] anyOf, int startIndex, int count);
     
@@ -116,11 +114,11 @@ namespace System
         [Pure]
         public int IndexOf(String value, int startIndex, int count) {
             if (startIndex < 0 || startIndex > this.Length) {
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
             }
 
             if (count < 0 || count > this.Length - startIndex) {
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_Count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_Count"));
             }
             Contract.EndContractBlock();
             
@@ -138,17 +136,16 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]
         public int IndexOf(String value, int startIndex, int count, StringComparison comparisonType) {
             // Validate inputs
             if (value == null)
-                throw new ArgumentNullException("value");
+                throw new ArgumentNullException(nameof(value));
 
             if (startIndex < 0 || startIndex > this.Length)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
 
             if (count < 0 || startIndex > this.Length - count)
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_Count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_Count"));
             Contract.EndContractBlock();
 
             switch (comparisonType) {
@@ -174,7 +171,7 @@ namespace System
                         return TextInfo.IndexOfStringOrdinalIgnoreCase(this, value, startIndex, count);
 
                 default:
-                    throw new ArgumentException(Environment.GetResourceString("NotSupported_StringComparison"), "comparisonType");
+                    throw new ArgumentException(Environment.GetResourceString("NotSupported_StringComparison"), nameof(comparisonType));
             }  
         }
 
@@ -194,16 +191,15 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         public unsafe int LastIndexOf(char value, int startIndex, int count) {
             if (Length == 0)
                 return -1;
 
             if (startIndex < 0 || startIndex >= Length)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
 
             if (count < 0 || count - 1 > startIndex)
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_Count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_Count"));
 
             fixed (char* pChars = &m_firstChar)
             {
@@ -258,7 +254,6 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]  // auto-generated
         [MethodImplAttribute(MethodImplOptions.InternalCall)]
         public extern int LastIndexOfAny(char [] anyOf, int startIndex, int count);
     
@@ -281,7 +276,7 @@ namespace System
         [Pure]
         public int LastIndexOf(String value, int startIndex, int count) {
             if (count<0) {
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_Count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_Count"));
             }
             Contract.EndContractBlock();
 
@@ -299,10 +294,9 @@ namespace System
         }
 
         [Pure]
-        [System.Security.SecuritySafeCritical]
         public int LastIndexOf(String value, int startIndex, int count, StringComparison comparisonType) {
             if (value == null)
-                throw new ArgumentNullException("value");
+                throw new ArgumentNullException(nameof(value));
             Contract.EndContractBlock();
 
             // Special case for 0 length input strings
@@ -311,7 +305,7 @@ namespace System
 
             // Now after handling empty strings, make sure we're not out of range
             if (startIndex < 0 || startIndex > this.Length)
-                throw new ArgumentOutOfRangeException("startIndex", Environment.GetResourceString("ArgumentOutOfRange_Index"));
+                throw new ArgumentOutOfRangeException(nameof(startIndex), Environment.GetResourceString("ArgumentOutOfRange_Index"));
             
             // Make sure that we allow startIndex == this.Length
             if (startIndex == this.Length)
@@ -327,7 +321,7 @@ namespace System
 
             // 2nd half of this also catches when startIndex == MAXINT, so MAXINT - 0 + 1 == -1, which is < 0.
             if (count < 0 || startIndex - count + 1 < 0)
-                throw new ArgumentOutOfRangeException("count", Environment.GetResourceString("ArgumentOutOfRange_Count"));
+                throw new ArgumentOutOfRangeException(nameof(count), Environment.GetResourceString("ArgumentOutOfRange_Count"));
 
 
             switch (comparisonType) {
@@ -351,7 +345,7 @@ namespace System
                     else
                         return TextInfo.LastIndexOfStringOrdinalIgnoreCase(this, value, startIndex, count);
                 default:
-                    throw new ArgumentException(Environment.GetResourceString("NotSupported_StringComparison"), "comparisonType");
+                    throw new ArgumentException(Environment.GetResourceString("NotSupported_StringComparison"), nameof(comparisonType));
             }  
         }
     }

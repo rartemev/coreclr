@@ -19,34 +19,15 @@
  *
  *  Helper for Compiler::fgPerBlockLocalVarLiveness().
  *  The goal is to compute the USE and DEF sets for a basic block.
- *  However with the new improvement to the data flow analysis (DFA),
- *  we do not mark x as used in x = f(x) when there are no side effects in f(x).
- *  'asgdLclVar' is set when 'tree' is part of an expression with no side-effects
- *  which is assigned to asgdLclVar, ie. asgdLclVar = (... tree ...)
  */
-void Compiler::fgMarkUseDef(GenTreeLclVarCommon* tree, GenTree* asgdLclVar)
+void Compiler::fgMarkUseDef(GenTreeLclVarCommon* tree)
 {
-    bool       rhsUSEDEF = false;
-    unsigned   lclNum;
-    unsigned   lhsLclNum;
-    LclVarDsc* varDsc;
+    assert((tree->OperIsLocal() && (tree->OperGet() != GT_PHI_ARG)) || tree->OperIsLocalAddr());
 
-    noway_assert(tree->gtOper == GT_LCL_VAR || tree->gtOper == GT_LCL_VAR_ADDR || tree->gtOper == GT_LCL_FLD ||
-                 tree->gtOper == GT_LCL_FLD_ADDR || tree->gtOper == GT_STORE_LCL_VAR ||
-                 tree->gtOper == GT_STORE_LCL_FLD);
+    const unsigned lclNum = tree->gtLclNum;
+    assert(lclNum < lvaCount);
 
-    if (tree->gtOper == GT_LCL_VAR || tree->gtOper == GT_LCL_VAR_ADDR || tree->gtOper == GT_STORE_LCL_VAR)
-    {
-        lclNum = tree->gtLclNum;
-    }
-    else
-    {
-        noway_assert(tree->OperIsLocalField());
-        lclNum = tree->gtLclFld.gtLclNum;
-    }
-
-    noway_assert(lclNum < lvaCount);
-    varDsc = lvaTable + lclNum;
+    LclVarDsc* const varDsc = &lvaTable[lclNum];
 
     // We should never encounter a reference to a lclVar that has a zero refCnt.
     if (varDsc->lvRefCnt == 0 && (!varTypeIsPromotable(varDsc) || !varDsc->lvPromoted))
@@ -56,97 +37,27 @@ void Compiler::fgMarkUseDef(GenTreeLclVarCommon* tree, GenTree* asgdLclVar)
         varDsc->lvRefCnt = 1;
     }
 
-    // NOTE: the analysis done below is neither necessary nor correct for LIR: it depends on
-    // the nodes that precede `asgdLclVar` in execution order to factor into the dataflow for the
-    // value being assigned to the local var, which is not necessarily the case without tree
-    // order. Furthermore, LIR is always traversed in an order that reflects the dataflow for the
-    // block.
-    if (asgdLclVar != nullptr)
-    {
-        assert(!compCurBB->IsLIR());
-
-        /* we have an assignment to a local var : asgdLclVar = ... tree ...
-         * check for x = f(x) case */
-
-        noway_assert(asgdLclVar->gtOper == GT_LCL_VAR || asgdLclVar->gtOper == GT_STORE_LCL_VAR);
-        noway_assert(asgdLclVar->gtFlags & GTF_VAR_DEF);
-
-        lhsLclNum = asgdLclVar->gtLclVarCommon.gtLclNum;
-
-        if ((lhsLclNum == lclNum) && ((tree->gtFlags & GTF_VAR_DEF) == 0) && (tree != asgdLclVar))
-        {
-            /* bingo - we have an x = f(x) case */
-            noway_assert(lvaTable[lhsLclNum].lvType != TYP_STRUCT);
-            asgdLclVar->gtFlags |= GTF_VAR_USEDEF;
-            rhsUSEDEF = true;
-        }
-    }
-
-    /* Is this a tracked variable? */
-
     if (varDsc->lvTracked)
     {
-        noway_assert(varDsc->lvVarIndex < lvaTrackedCount);
+        assert(varDsc->lvVarIndex < lvaTrackedCount);
 
-        if ((tree->gtFlags & GTF_VAR_DEF) != 0 && (tree->gtFlags & (GTF_VAR_USEASG | GTF_VAR_USEDEF)) == 0)
+        const bool isDef = (tree->gtFlags & GTF_VAR_DEF) != 0;
+        const bool isUse = !isDef || ((tree->gtFlags & (GTF_VAR_USEASG | GTF_VAR_USEDEF)) != 0);
+
+        if (isUse && !VarSetOps::IsMember(this, fgCurDefSet, varDsc->lvVarIndex))
         {
-            // if  (!(fgCurUseSet & bitMask)) printf("V%02u,T%02u def at %08p\n", lclNum, varDsc->lvVarIndex, tree);
-            VarSetOps::AddElemD(this, fgCurDefSet, varDsc->lvVarIndex);
+            // This is an exposed use; add it to the set of uses.
+            VarSetOps::AddElemD(this, fgCurUseSet, varDsc->lvVarIndex);
         }
-        else
+
+        if (isDef)
         {
-            // if  (!(fgCurDefSet & bitMask))
-            // {
-            //      printf("V%02u,T%02u use at ", lclNum, varDsc->lvVarIndex);
-            //      printTreeID(tree);
-            //      printf("\n");
-            // }
-
-            /* We have the following scenarios:
-             *   1. "x += something" - in this case x is flagged GTF_VAR_USEASG
-             *   2. "x = ... x ..." - the LHS x is flagged GTF_VAR_USEDEF,
-             *                        the RHS x is has rhsUSEDEF = true
-             *                        (both set by the code above)
-             *
-             * We should not mark an USE of x in the above cases provided the value "x" is not used
-             * further up in the tree. For example "while (i++)" is required to mark i as used.
-             */
-
-            /* make sure we don't include USEDEF variables in the USE set
-             * The first test is for LSH, the second (!rhsUSEDEF) is for any var in the RHS */
-
-            if ((tree->gtFlags & (GTF_VAR_USEASG | GTF_VAR_USEDEF)) == 0)
-            {
-                /* Not a special flag - check to see if used to assign to itself */
-
-                if (rhsUSEDEF)
-                {
-                    /* assign to itself - do not include it in the USE set */
-                    if (!opts.MinOpts() && !opts.compDbgCode)
-                    {
-                        return;
-                    }
-                }
-            }
-
-            /* Fall through for the "good" cases above - add the variable to the USE set */
-
-            if (!VarSetOps::IsMember(this, fgCurDefSet, varDsc->lvVarIndex))
-            {
-                VarSetOps::AddElemD(this, fgCurUseSet, varDsc->lvVarIndex);
-            }
-
-            // For defs, also add to the (all) def set.
-            if ((tree->gtFlags & GTF_VAR_DEF) != 0)
-            {
-                VarSetOps::AddElemD(this, fgCurDefSet, varDsc->lvVarIndex);
-            }
+            // This is a def, add it to the set of defs.
+            VarSetOps::AddElemD(this, fgCurDefSet, varDsc->lvVarIndex);
         }
     }
     else if (varTypeIsStruct(varDsc))
     {
-        noway_assert(!varDsc->lvTracked);
-
         lvaPromotionType promotionType = lvaGetPromotionType(varDsc);
 
         if (promotionType != PROMOTION_TYPE_NONE)
@@ -291,13 +202,10 @@ void Compiler::fgLocalVarLivenessInit()
 //
 // Arguments:
 //    tree       - The current node.
-//    asgdLclVar - Either nullptr or the assignement's left-hand-side GT_LCL_VAR.
-//                 Used as an argument to fgMarkUseDef(); only valid for HIR blocks.
 //
-void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree, GenTree* asgdLclVar)
+void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree)
 {
     assert(tree != nullptr);
-    assert(asgdLclVar == nullptr || !compCurBB->IsLIR());
 
     switch (tree->gtOper)
     {
@@ -313,7 +221,7 @@ void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree, GenTree* asgdLclVar)
         case GT_LCL_FLD_ADDR:
         case GT_STORE_LCL_VAR:
         case GT_STORE_LCL_FLD:
-            fgMarkUseDef(tree->AsLclVarCommon(), asgdLclVar);
+            fgMarkUseDef(tree->AsLclVarCommon());
             break;
 
         case GT_CLS_VAR:
@@ -329,7 +237,7 @@ void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree, GenTree* asgdLclVar)
             }
             // If the GT_CLS_VAR is the lhs of an assignment, we'll handle it as a heap def, when we get to assignment.
             // Otherwise, we treat it as a use here.
-            if (!fgCurHeapDef && (tree->gtFlags & GTF_CLS_VAR_ASG_LHS) == 0)
+            if ((tree->gtFlags & GTF_CLS_VAR_ASG_LHS) == 0)
             {
                 fgCurHeapUse = true;
             }
@@ -366,7 +274,7 @@ void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree, GenTree* asgdLclVar)
                 {
                     // Defines a local addr
                     assert(dummyLclVarTree != nullptr);
-                    fgMarkUseDef(dummyLclVarTree->AsLclVarCommon(), asgdLclVar);
+                    fgMarkUseDef(dummyLclVarTree->AsLclVarCommon());
                 }
             }
             break;
@@ -382,10 +290,7 @@ void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree, GenTree* asgdLclVar)
         case GT_XADD:
         case GT_XCHG:
         case GT_CMPXCHG:
-            if (!fgCurHeapDef)
-            {
-                fgCurHeapUse = true;
-            }
+            fgCurHeapUse   = true;
             fgCurHeapDef   = true;
             fgCurHeapHavoc = true;
             break;
@@ -411,10 +316,7 @@ void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree, GenTree* asgdLclVar)
             }
             if (modHeap)
             {
-                if (!fgCurHeapDef)
-                {
-                    fgCurHeapUse = true;
-                }
+                fgCurHeapUse   = true;
                 fgCurHeapDef   = true;
                 fgCurHeapHavoc = true;
             }
@@ -463,21 +365,6 @@ void Compiler::fgPerNodeLocalVarLiveness(GenTree* tree, GenTree* asgdLclVar)
                 }
             }
             break;
-    }
-}
-
-void Compiler::fgPerStatementLocalVarLiveness(GenTree* startNode, GenTree* asgdLclVar)
-{
-    // The startNode must be the 1st node of the statement.
-    assert(startNode == compCurStmt->gtStmt.gtStmtList);
-
-    // The asgdLclVar node must be either nullptr or a GT_LCL_VAR or GT_STORE_LCL_VAR
-    assert((asgdLclVar == nullptr) || (asgdLclVar->gtOper == GT_LCL_VAR || asgdLclVar->gtOper == GT_STORE_LCL_VAR));
-
-    // We always walk every node in statement list
-    for (GenTreePtr node = startNode; node != nullptr; node = node->gtNext)
-    {
-        fgPerNodeLocalVarLiveness(node, asgdLclVar);
     }
 }
 
@@ -552,10 +439,6 @@ void Compiler::fgPerBlockLocalVarLiveness()
 
     for (block = fgFirstBB; block; block = block->bbNext)
     {
-        GenTreePtr stmt;
-        GenTreePtr tree;
-        GenTreePtr asgdLclVar;
-
         VarSetOps::ClearD(this, fgCurUseSet);
         VarSetOps::ClearD(this, fgCurDefSet);
 
@@ -564,63 +447,20 @@ void Compiler::fgPerBlockLocalVarLiveness()
         fgCurHeapHavoc = false;
 
         compCurBB = block;
-
         if (!block->IsLIR())
         {
-            for (stmt = block->FirstNonPhiDef(); stmt; stmt = stmt->gtNext)
+            for (GenTreeStmt* stmt = block->FirstNonPhiDef(); stmt; stmt = stmt->gtNextStmt)
             {
-                noway_assert(stmt->gtOper == GT_STMT);
-
                 compCurStmt = stmt;
 
-                asgdLclVar = nullptr;
-                tree       = stmt->gtStmt.gtStmtExpr;
-                noway_assert(tree);
-
-                // The following code checks if we have an assignment expression
-                // which may become a GTF_VAR_USEDEF - x=f(x).
-                // consider if LHS is local var - ignore if RHS contains SIDE_EFFECTS
-
-                if ((tree->gtOper == GT_ASG && tree->gtOp.gtOp1->gtOper == GT_LCL_VAR) ||
-                    tree->gtOper == GT_STORE_LCL_VAR)
-                {
-                    noway_assert(tree->gtOp.gtOp1);
-                    GenTreePtr rhsNode;
-                    if (tree->gtOper == GT_ASG)
-                    {
-                        noway_assert(tree->gtOp.gtOp2);
-                        asgdLclVar = tree->gtOp.gtOp1;
-                        rhsNode    = tree->gtOp.gtOp2;
-                    }
-                    else
-                    {
-                        asgdLclVar = tree;
-                        rhsNode    = tree->gtOp.gtOp1;
-                    }
-
-                    // If this is an assignment to local var with no SIDE EFFECTS,
-                    // set asgdLclVar so that genMarkUseDef will flag potential
-                    // x=f(x) expressions as GTF_VAR_USEDEF.
-                    // Reset the flag before recomputing it - it may have been set before,
-                    // but subsequent optimizations could have removed the rhs reference.
-                    asgdLclVar->gtFlags &= ~GTF_VAR_USEDEF;
-                    if ((rhsNode->gtFlags & GTF_SIDE_EFFECT) == 0)
-                    {
-                        noway_assert(asgdLclVar->gtFlags & GTF_VAR_DEF);
-                    }
-                    else
-                    {
-                        asgdLclVar = nullptr;
-                    }
-                }
-
 #ifdef LEGACY_BACKEND
-                tree = fgLegacyPerStatementLocalVarLiveness(stmt->gtStmt.gtStmtList, NULL, asgdLclVar);
-
-                // We must have walked to the end of this statement.
-                noway_assert(!tree);
+                GenTree* tree = fgLegacyPerStatementLocalVarLiveness(stmt->gtStmtList, nullptr);
+                assert(tree == nullptr);
 #else  // !LEGACY_BACKEND
-                fgPerStatementLocalVarLiveness(stmt->gtStmt.gtStmtList, asgdLclVar);
+                for (GenTree* node = stmt->gtStmtList; node != nullptr; node = node->gtNext)
+                {
+                    fgPerNodeLocalVarLiveness(node);
+                }
 #endif // !LEGACY_BACKEND
             }
         }
@@ -629,13 +469,9 @@ void Compiler::fgPerBlockLocalVarLiveness()
 #ifdef LEGACY_BACKEND
             unreached();
 #else  // !LEGACY_BACKEND
-            // NOTE: the `asgdLclVar` analysis done above is not correct for LIR: it depends
-            // on all of the nodes that precede `asgdLclVar` in execution order to factor into the
-            // dataflow for the value being assigned to the local var, which is not necessarily the
-            // case without tree order. As a result, we simply pass `nullptr` for `asgdLclVar`.
             for (GenTree* node : LIR::AsRange(block).NonPhiNodes())
             {
-                fgPerNodeLocalVarLiveness(node, nullptr);
+                fgPerNodeLocalVarLiveness(node);
             }
 #endif // !LEGACY_BACKEND
         }
@@ -698,10 +534,6 @@ void Compiler::fgPerBlockLocalVarLiveness()
         block->bbHeapLiveIn = false;
     }
 }
-
-/*****************************************************************************/
-#ifdef DEBUGGING_SUPPORT
-/*****************************************************************************/
 
 // Helper functions to mark variables live over their entire scope
 
@@ -1184,10 +1016,6 @@ void Compiler::fgExtendDbgLifetimes()
     }
 #endif // DEBUG
 }
-
-/*****************************************************************************/
-#endif // DEBUGGING_SUPPORT
-/*****************************************************************************/
 
 VARSET_VALRET_TP Compiler::fgGetHandlerLiveVars(BasicBlock* block)
 {
@@ -1906,9 +1734,7 @@ VARSET_VALRET_TP Compiler::fgComputeLife(VARSET_VALARG_TP lifeArg,
     VARSET_TP VARSET_INIT(this, life, lifeArg); // lifeArg is const ref; copy to allow modification.
 
     VARSET_TP VARSET_INIT(this, keepAliveVars, volatileVars);
-#ifdef DEBUGGING_SUPPORT
     VarSetOps::UnionD(this, keepAliveVars, compCurBB->bbScope); // Don't kill vars in scope
-#endif
 
     noway_assert(VarSetOps::Equal(this, VarSetOps::Intersection(this, keepAliveVars, life), keepAliveVars));
     noway_assert(compCurStmt->gtOper == GT_STMT);
@@ -1956,9 +1782,7 @@ VARSET_VALRET_TP Compiler::fgComputeLifeLIR(VARSET_VALARG_TP lifeArg, BasicBlock
     VARSET_TP VARSET_INIT(this, life, lifeArg); // lifeArg is const ref; copy to allow modification.
 
     VARSET_TP VARSET_INIT(this, keepAliveVars, volatileVars);
-#ifdef DEBUGGING_SUPPORT
     VarSetOps::UnionD(this, keepAliveVars, block->bbScope); // Don't kill vars in scope
-#endif
 
     noway_assert(VarSetOps::Equal(this, VarSetOps::Intersection(this, keepAliveVars, life), keepAliveVars));
 
@@ -1981,9 +1805,9 @@ VARSET_VALRET_TP Compiler::fgComputeLifeLIR(VARSET_VALARG_TP lifeArg, BasicBlock
         else if (node->OperIsNonPhiLocal() || node->OperIsLocalAddr())
         {
             bool isDeadStore = fgComputeLifeLocal(life, keepAliveVars, node, node);
-            if (isDeadStore)
+            if (isDeadStore && fgTryRemoveDeadLIRStore(blockRange, node, &next))
             {
-                fgTryRemoveDeadLIRStore(blockRange, node, &next);
+                fgStmtRemoved = true;
             }
         }
     }
@@ -2019,9 +1843,8 @@ VARSET_VALRET_TP Compiler::fgComputeLife(VARSET_VALARG_TP lifeArg,
     GenTreePtr gtColon = NULL;
 
     VARSET_TP VARSET_INIT(this, keepAliveVars, volatileVars);
-#ifdef DEBUGGING_SUPPORT
     VarSetOps::UnionD(this, keepAliveVars, compCurBB->bbScope); /* Dont kill vars in scope */
-#endif
+
     noway_assert(VarSetOps::Equal(this, VarSetOps::Intersection(this, keepAliveVars, life), keepAliveVars));
     noway_assert(compCurStmt->gtOper == GT_STMT);
     noway_assert(endNode || (startNode == compCurStmt->gtStmt.gtStmtExpr));
@@ -2855,10 +2678,6 @@ void Compiler::fgInterBlockLocalVarLiveness()
 
     fgLiveVarAnalysis();
 
-//-------------------------------------------------------------------------
-
-#ifdef DEBUGGING_SUPPORT
-
     /* For debuggable code, we mark vars as live over their entire
      * reported scope, so that it will be visible over the entire scope
      */
@@ -2867,8 +2686,6 @@ void Compiler::fgInterBlockLocalVarLiveness()
     {
         fgExtendDbgLifetimes();
     }
-
-#endif // DEBUGGING_SUPPORT
 
     /*-------------------------------------------------------------------------
      * Variables involved in exception-handlers and finally blocks need

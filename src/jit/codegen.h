@@ -122,7 +122,7 @@ private:
 
     void genRangeCheck(GenTree* node);
 
-    void genLockedInstructions(GenTree* node);
+    void genLockedInstructions(GenTreeOp* node);
 
     //-------------------------------------------------------------------------
     // Register-related methods
@@ -249,6 +249,8 @@ protected:
     void genDefineTempLabel(BasicBlock* label);
 
     void genAdjustSP(ssize_t delta);
+
+    void genAdjustStackLevel(BasicBlock* block);
 
     void genExitCode(BasicBlock* block);
 
@@ -498,9 +500,15 @@ protected:
     regMaskTP genPushRegs(regMaskTP regs, regMaskTP* byrefRegs, regMaskTP* noRefRegs);
     void genPopRegs(regMaskTP regs, regMaskTP byrefRegs, regMaskTP noRefRegs);
 
-/*****************************************************************************/
-#ifdef DEBUGGING_SUPPORT
-/*****************************************************************************/
+/*
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+XX                                                                           XX
+XX                           Debugging Support                               XX
+XX                                                                           XX
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+*/
 
 #ifdef DEBUG
     void genIPmappingDisp(unsigned mappingNum, Compiler::IPmappingDsc* ipMapping);
@@ -733,10 +741,6 @@ protected:
     TrnslLocalVarInfo* genTrnslLocalVarInfo;
     unsigned           genTrnslLocalVarCount;
 #endif
-
-/*****************************************************************************/
-#endif // DEBUGGING_SUPPORT
-/*****************************************************************************/
 
 #ifndef LEGACY_BACKEND
 #include "codegenlinear.h"

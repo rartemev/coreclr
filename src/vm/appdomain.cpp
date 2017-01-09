@@ -2870,6 +2870,11 @@ void SystemDomain::LoadBaseSystemClasses()
     // the SZArrayHelper class here.
     g_pSZArrayHelperClass = MscorlibBinder::GetClass(CLASS__SZARRAYHELPER);
 
+#ifdef FEATURE_SPAN_OF_T
+    // Load ByReference class
+    g_pByReferenceClass = MscorlibBinder::GetClass(CLASS__BYREFERENCE);
+#endif
+
     // Load Nullable class
     g_pNullableClass = MscorlibBinder::GetClass(CLASS__NULLABLE);
 
@@ -2943,6 +2948,7 @@ void SystemDomain::LoadBaseSystemClasses()
     g_pExecutionEngineExceptionClass = MscorlibBinder::GetException(kExecutionEngineException);
     g_pThreadAbortExceptionClass = MscorlibBinder::GetException(kThreadAbortException);
 
+#ifdef FEATURE_CER
     // Used for determining whether a class has a critical finalizer
     // To determine whether a class has a critical finalizer, we
     // currently will simply see if it's parent class has a critical
@@ -2951,6 +2957,7 @@ void SystemDomain::LoadBaseSystemClasses()
     // here.
     g_pCriticalFinalizerObjectClass = MscorlibBinder::GetClass(CLASS__CRITICAL_FINALIZER_OBJECT);
     _ASSERTE(g_pCriticalFinalizerObjectClass->HasCriticalFinalizer());
+#endif
 
     // used by gc to handle predefined agility checking
     g_pThreadClass = MscorlibBinder::GetClass(CLASS__THREAD);
@@ -2980,7 +2987,9 @@ void SystemDomain::LoadBaseSystemClasses()
 
     // Load a special marker method used to detect Constrained Execution Regions
     // at jit time.
+#ifdef FEATURE_CER
     g_pPrepareConstrainedRegionsMethod = MscorlibBinder::GetMethod(METHOD__RUNTIME_HELPERS__PREPARE_CONSTRAINED_REGIONS);
+#endif
     g_pExecuteBackoutCodeHelperMethod = MscorlibBinder::GetMethod(METHOD__RUNTIME_HELPERS__EXECUTE_BACKOUT_CODE_HELPER);
 
     // Make sure that FCall mapping for Monitor.Enter is initialized. We need it in case Monitor.Enter is used only as JIT helper. 
@@ -8084,6 +8093,13 @@ BOOL AppDomain::IsCached(AssemblySpec *pSpec)
     return m_AssemblyCache.Contains(pSpec);
 }
 
+#ifdef FEATURE_CORECLR
+void AppDomain::GetCacheAssemblyList(SetSHash<PTR_DomainAssembly>& assemblyList)
+{
+    CrstHolder holder(&m_DomainCacheCrst);
+    m_AssemblyCache.GetAllAssemblies(assemblyList);
+}
+#endif
 
 PEAssembly* AppDomain::FindCachedFile(AssemblySpec* pSpec, BOOL fThrow /*=TRUE*/)
 {
@@ -8241,7 +8257,7 @@ public:
         }
         else
         {
-            IfFailRet(FString::Utf8_Unicode(szName, bIsAscii, wzBuffer, cchBuffer));
+            IfFailRet(FString::Utf8_Unicode(szName, bIsAscii, wzBuffer, cchName));
             if (pcchBuffer != nullptr)
             {
                 *pcchBuffer = cchName;
@@ -11128,14 +11144,14 @@ void AppDomain::Unload(BOOL fForceUnload)
     if (takeSnapShot)
     {
         char buffer[1024];
-        sprintf(buffer, "vadump -p %d -o > vadump.%d", GetCurrentProcessId(), unloadCount);
+        sprintf_s(buffer, _countof(buffer), "vadump -p %d -o > vadump.%d", GetCurrentProcessId(), unloadCount);
         system(buffer);
-        sprintf(buffer, "umdh -p:%d -d -i:1 -f:umdh.%d", GetCurrentProcessId(), unloadCount);
+        sprintf_s(buffer, _countof(buffer), "umdh -p:%d -d -i:1 -f:umdh.%d", GetCurrentProcessId(), unloadCount);
         system(buffer);
         int takeDHSnapShot = CLRConfig::GetConfigValue(CLRConfig::INTERNAL_ADTakeDHSnapShot);
         if (takeDHSnapShot)
         {
-            sprintf(buffer, "dh -p %d -s -g -h -b -f dh.%d", GetCurrentProcessId(), unloadCount);
+            sprintf_s(buffer, _countof(buffer), "dh -p %d -s -g -h -b -f dh.%d", GetCurrentProcessId(), unloadCount);
             system(buffer);
         }
     }
@@ -12567,11 +12583,13 @@ AppDomain::RaiseAssemblyResolveEvent(
     {
         if (pSpec->GetParentAssembly() != NULL)
         {
+#ifndef FEATURE_CORECLR
             if ( pSpec->IsIntrospectionOnly() 
 #ifdef FEATURE_FUSION
                     || pSpec->GetParentLoadContext() == LOADCTX_TYPE_UNKNOWN
 #endif
                 )
+#endif // FEATURE_CORECLR
             {
                 gc.AssemblyRef=pSpec->GetParentAssembly()->GetExposedAssemblyObject();
             }
@@ -13695,7 +13713,6 @@ ULONG ADUnloadSink::Release()
     if (ulRef == 0)
     {
         delete this;
-        return 0;
     }
     return ulRef;
 };

@@ -2560,7 +2560,9 @@ StackWalkAction StackFrameIterator::NextRaw(void)
         // to recover from AVs during profiler stackwalk.)
 
         PTR_VOID newSP = PTR_VOID((TADDR)GetRegdisplaySP(m_crawl.pRD));
+#ifndef NO_FIXED_STACK_LIMIT
         FAIL_IF_SPECULATIVE_WALK(newSP >= m_crawl.pThread->GetCachedStackLimit());
+#endif // !NO_FIXED_STACK_LIMIT
         FAIL_IF_SPECULATIVE_WALK(newSP < m_crawl.pThread->GetCachedStackBase());
 
 #undef FAIL_IF_SPECULATIVE_WALK
@@ -2675,7 +2677,7 @@ StackWalkAction StackFrameIterator::NextRaw(void)
 
                 // We are transitioning from unmanaged code to managed code... lets do some validation of our
                 // EH mechanism on platforms that we can.
-#if defined(_DEBUG)  && !defined(DACCESS_COMPILE) && defined(_TARGET_X86_)
+#if defined(_DEBUG)  && !defined(DACCESS_COMPILE) && (defined(_TARGET_X86_) && !defined(FEATURE_STUBS_AS_IL))
                 VerifyValidTransitionFromManagedCode(m_crawl.pThread, &m_crawl);
 #endif // _DEBUG && !DACCESS_COMPILE && _TARGET_X86_
             }

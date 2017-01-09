@@ -177,7 +177,7 @@
 #include "ipcfunccall.h"
 #include "perflog.h"
 #include "../dlls/mscorrc/resource.h"
-#if defined(FEATURE_LEGACYSURFACE) || defined(FEATURE_USE_LCID)
+#ifdef FEATURE_USE_LCID
 #include "nlsinfo.h"
 #endif 
 #include "util.hpp"
@@ -195,6 +195,7 @@
 #include "finalizerthread.h"
 #include "threadsuspend.h"
 #include "disassembler.h"
+#include "gcenv.ee.h"
 
 #ifndef FEATURE_PAL
 #include "dwreport.h"
@@ -305,7 +306,6 @@ extern "C" HRESULT __cdecl CorDBGetInterface(DebugInterface** rcInterface);
 
 
 #if !defined(FEATURE_CORECLR) && !defined(CROSSGEN_COMPILE)
-void* __stdcall GetCLRFunction(LPCSTR FunctionName);
 
 // Pointer to the activated CLR interface provided by the shim.
 ICLRRuntimeInfo *g_pCLRRuntime = NULL;
@@ -1932,15 +1932,17 @@ void STDMETHODCALLTYPE EEShutDownHelper(BOOL fIsDllUnloading)
 #endif
 
 #ifdef FEATURE_PREJIT
-        // If we're doing basic block profiling, we need to write the log files to disk.
-
-        static BOOL fIBCLoggingDone = FALSE;
-        if (!fIBCLoggingDone)
         {
-            if (g_IBCLogger.InstrEnabled())
-                Module::WriteAllModuleProfileData(true);
+            // If we're doing basic block profiling, we need to write the log files to disk.
 
-            fIBCLoggingDone = TRUE;
+            static BOOL fIBCLoggingDone = FALSE;
+            if (!fIBCLoggingDone)
+            {
+                if (g_IBCLogger.InstrEnabled())
+                    Module::WriteAllModuleProfileData(true);
+
+                fIBCLoggingDone = TRUE;
+            }
         }
 
 #endif // FEATURE_PREJIT
@@ -3719,7 +3721,15 @@ void InitializeGarbageCollector()
     g_pFreeObjectMethodTable->SetBaseSize(ObjSizeOf (ArrayBase));
     g_pFreeObjectMethodTable->SetComponentSize(1);
 
-    IGCHeap *pGCHeap = InitializeGarbageCollector(nullptr);
+#ifdef FEATURE_STANDALONE_GC
+    IGCToCLR* gcToClr = new (nothrow) GCToEEInterface();
+    if (!gcToClr)
+        ThrowOutOfMemory();
+#else
+    IGCToCLR* gcToClr = nullptr;
+#endif
+
+    IGCHeap *pGCHeap = InitializeGarbageCollector(gcToClr);
     g_pGCHeap = pGCHeap;
     if (!pGCHeap)
         ThrowOutOfMemory();
@@ -4644,7 +4654,6 @@ VOID STDMETHODCALLTYPE LogHelp_LogAssert( LPCSTR szFile, int iLine, LPCSTR expr)
 
 }
 
-extern BOOL NoGuiOnAssert();
 extern "C"
 //__declspec(dllexport)
 BOOL STDMETHODCALLTYPE LogHelp_NoGuiOnAssert()
@@ -4657,7 +4666,6 @@ BOOL STDMETHODCALLTYPE LogHelp_NoGuiOnAssert()
     return fRet;
 }
 
-extern VOID TerminateOnAssert();
 extern "C"
 //__declspec(dllexport)
 VOID STDMETHODCALLTYPE LogHelp_TerminateOnAssert()

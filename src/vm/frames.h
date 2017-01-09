@@ -113,8 +113,10 @@
 //    |   +-ComPrestubMethodFrame - prestub frame for calls from COM to CLR
 //    |
 #endif //FEATURE_COMINTEROP
+#ifdef _TARGET_X86_
 //    | +-UMThkCallFrame        - this frame represents an unmanaged->managed
 //    |                           transition through N/Direct
+#endif
 //    |
 //    +-ContextTransitionFrame  - this frame is used to mark an appdomain transition
 //    |
@@ -1905,7 +1907,7 @@ class UnmanagedToManagedFrame : public Frame
 {
     friend class CheckAsmOffsets;
 
-    VPTR_ABSTRACT_VTABLE_CLASS(UnmanagedToManagedFrame, Frame)
+    VPTR_ABSTRACT_VTABLE_CLASS_AND_CTOR(UnmanagedToManagedFrame, Frame)
 
 public:
 
@@ -2897,7 +2899,7 @@ typedef DPTR(class UMThunkMarshInfo) PTR_UMThunkMarshInfo;
 class UMEntryThunk;
 typedef DPTR(class UMEntryThunk) PTR_UMEntryThunk;
 
-#ifdef _TARGET_X86_
+#if defined(_TARGET_X86_)
 //------------------------------------------------------------------------
 // This frame guards an unmanaged->managed transition thru a UMThk
 //------------------------------------------------------------------------
@@ -2925,7 +2927,7 @@ protected:
     // Keep as last entry in class
     DEFINE_VTABLE_GETTER_AND_CTOR_AND_DTOR(UMThkCallFrame)
 };
-#endif // _TARGET_X86_
+#endif // _TARGET_X86_ && !FEATURE_PAL
 
 #if defined(_TARGET_X86_)
 //-------------------------------------------------------------------------

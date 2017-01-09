@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.Contracts;
 using System.Runtime.InteropServices;
 using System.Security;
@@ -17,7 +18,8 @@ namespace System.Globalization
         const int ICU_ULOC_KEYWORD_AND_VALUES_CAPACITY = 100; // max size of keyword or value
         const int ICU_ULOC_FULLNAME_CAPACITY = 157;           // max size of locale name
         const string ICU_COLLATION_KEYWORD = "@collation=";
-
+        
+        
         /// <summary>
         /// This method uses the sRealName field (which is initialized by the constructor before this is called) to
         /// initialize the rest of the state of CultureData based on the underlying OS globalization library.
@@ -25,8 +27,8 @@ namespace System.Globalization
         [SecuritySafeCritical]
         private unsafe bool InitCultureData()
         {
-            Contract.Assert(_sRealName != null);
-
+            Debug.Assert(_sRealName != null);
+            
             string alternateSortName = string.Empty;
             string realNameBuffer = _sRealName;
 
@@ -66,23 +68,21 @@ namespace System.Globalization
                 _sName = _sWindowsName;
             }
             _sRealName = _sName;
-            _sSpecificCulture = _sRealName; // we don't attempt to find a non-neutral locale if a neutral is passed in (unlike win32)
 
             _iLanguage = this.ILANGUAGE;
             if (_iLanguage == 0)
             {
-                _iLanguage = LOCALE_CUSTOM_UNSPECIFIED;
+                _iLanguage = CultureInfo.LOCALE_CUSTOM_UNSPECIFIED;
             }
 
             _bNeutral = (this.SISO3166CTRYNAME.Length == 0);
-
+            
+            _sSpecificCulture = _bNeutral ? LocaleData.GetSpecificCultureName(_sRealName) : _sRealName;   
+            
             // Remove the sort from sName unless custom culture
-            if (!_bNeutral)
+            if (index>0 && !_bNeutral && !IsCustomCultureId(_iLanguage))
             {
-                if (!IsCustomCultureId(_iLanguage))
-                {
-                    _sName = _sWindowsName.Substring(0, index);
-                }
+                _sName = _sWindowsName.Substring(0, index);
             }
             return true;
         }
@@ -120,10 +120,10 @@ namespace System.Globalization
             windowsName = StringBuilderCache.GetStringAndRelease(sb); // the name passed to subsequent ICU calls
             return true;
         }
-
+        
         private string GetLocaleInfo(LocaleStringData type)
         {
-            Contract.Assert(_sWindowsName != null, "[CultureData.GetLocaleInfo] Expected _sWindowsName to be populated already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.GetLocaleInfo] Expected _sWindowsName to be populated already");
             return GetLocaleInfo(_sWindowsName, type);
         }
 
@@ -132,7 +132,7 @@ namespace System.Globalization
         [SecuritySafeCritical]
         private string GetLocaleInfo(string localeName, LocaleStringData type)
         {
-            Contract.Assert(localeName != null, "[CultureData.GetLocaleInfo] Expected localeName to be not be null");
+            Debug.Assert(localeName != null, "[CultureData.GetLocaleInfo] Expected localeName to be not be null");
 
             switch (type)
             {
@@ -149,7 +149,7 @@ namespace System.Globalization
             {
                 // Failed, just use empty string
                 StringBuilderCache.Release(sb);
-                Contract.Assert(false, "[CultureData.GetLocaleInfo(LocaleStringData)] Failed");
+                Debug.Assert(false, "[CultureData.GetLocaleInfo(LocaleStringData)] Failed");
                 return String.Empty;
             }
             return StringBuilderCache.GetStringAndRelease(sb);
@@ -158,7 +158,7 @@ namespace System.Globalization
         [SecuritySafeCritical]
         private int GetLocaleInfo(LocaleNumberData type)
         {
-            Contract.Assert(_sWindowsName != null, "[CultureData.GetLocaleInfo(LocaleNumberData)] Expected _sWindowsName to be populated already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.GetLocaleInfo(LocaleNumberData)] Expected _sWindowsName to be populated already");
 
             switch (type)
             {
@@ -173,7 +173,7 @@ namespace System.Globalization
             if (!result)
             {
                 // Failed, just use 0
-                Contract.Assert(false, "[CultureData.GetLocaleInfo(LocaleNumberData)] failed");
+                Debug.Assert(false, "[CultureData.GetLocaleInfo(LocaleNumberData)] failed");
             }
 
             return value;
@@ -182,14 +182,14 @@ namespace System.Globalization
         [SecuritySafeCritical]
         private int[] GetLocaleInfo(LocaleGroupingData type)
         {
-            Contract.Assert(_sWindowsName != null, "[CultureData.GetLocaleInfo(LocaleGroupingData)] Expected _sWindowsName to be populated already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.GetLocaleInfo(LocaleGroupingData)] Expected _sWindowsName to be populated already");
 
             int primaryGroupingSize = 0;
             int secondaryGroupingSize = 0;
             bool result = Interop.GlobalizationInterop.GetLocaleInfoGroupingSizes(_sWindowsName, (uint)type, ref primaryGroupingSize, ref secondaryGroupingSize);
             if (!result)
             {
-                Contract.Assert(false, "[CultureData.GetLocaleInfo(LocaleGroupingData type)] failed");
+                Debug.Assert(false, "[CultureData.GetLocaleInfo(LocaleGroupingData type)] failed");
             }
 
             if (secondaryGroupingSize == 0)
@@ -208,7 +208,7 @@ namespace System.Globalization
         [SecuritySafeCritical]
         private string GetTimeFormatString(bool shortFormat)
         {
-            Contract.Assert(_sWindowsName != null, "[CultureData.GetTimeFormatString(bool shortFormat)] Expected _sWindowsName to be populated already");
+            Debug.Assert(_sWindowsName != null, "[CultureData.GetTimeFormatString(bool shortFormat)] Expected _sWindowsName to be populated already");
 
             StringBuilder sb = StringBuilderCache.Acquire(ICU_ULOC_KEYWORD_AND_VALUES_CAPACITY);
 
@@ -217,7 +217,7 @@ namespace System.Globalization
             {
                 // Failed, just use empty string
                 StringBuilderCache.Release(sb);
-                Contract.Assert(false, "[CultureData.GetTimeFormatString(bool shortFormat)] Failed");
+                Debug.Assert(false, "[CultureData.GetTimeFormatString(bool shortFormat)] Failed");
                 return String.Empty;
             }
 
@@ -299,6 +299,128 @@ namespace System.Globalization
             }
 
             return StringBuilderCache.GetStringAndRelease(sb);
+        }
+        
+        private static string LCIDToLocaleName(int culture)
+        {
+            return LocaleData.LCIDToLocaleName(culture);
+        }
+
+        private static int LocaleNameToLCID(string cultureName)
+        {
+            int lcid = LocaleData.GetLocaleDataNumericPart(cultureName, LocaleDataParts.Lcid);
+            return lcid == -1 ? CultureInfo.LOCALE_CUSTOM_UNSPECIFIED : lcid; 
+        }
+        
+        private static int GetAnsiCodePage(string cultureName)
+        {
+            int ansiCodePage = LocaleData.GetLocaleDataNumericPart(cultureName, LocaleDataParts.AnsiCodePage);
+            return ansiCodePage == -1 ? CultureData.Invariant.IDEFAULTANSICODEPAGE : ansiCodePage; 
+        }
+
+        private static int GetOemCodePage(string cultureName)
+        {
+            int oemCodePage = LocaleData.GetLocaleDataNumericPart(cultureName, LocaleDataParts.OemCodePage);
+            return oemCodePage == -1 ? CultureData.Invariant.IDEFAULTOEMCODEPAGE : oemCodePage; 
+        }
+
+        private static int GetMacCodePage(string cultureName)
+        {
+            int macCodePage = LocaleData.GetLocaleDataNumericPart(cultureName, LocaleDataParts.MacCodePage);
+            return macCodePage == -1 ? CultureData.Invariant.IDEFAULTMACCODEPAGE : macCodePage; 
+        }
+
+        private static int GetEbcdicCodePage(string cultureName)
+        {
+            int ebcdicCodePage = LocaleData.GetLocaleDataNumericPart(cultureName, LocaleDataParts.EbcdicCodePage);
+            return ebcdicCodePage == -1 ? CultureData.Invariant.IDEFAULTEBCDICCODEPAGE : ebcdicCodePage; 
+        }
+
+        private static int GetGeoId(string cultureName)
+        {
+            int geoId = LocaleData.GetLocaleDataNumericPart(cultureName, LocaleDataParts.GeoId);
+            return geoId == -1 ? CultureData.Invariant.IGEOID : geoId; 
+        }
+        
+        private static int GetDigitSubstitution(string cultureName)
+        {
+            int digitSubstitution = LocaleData.GetLocaleDataNumericPart(cultureName, LocaleDataParts.DigitSubstitution);
+            return digitSubstitution == -1 ? (int) DigitShapes.None : digitSubstitution; 
+        }
+
+        private static string GetThreeLetterWindowsLanguageName(string cultureName)
+        {
+            string langName = LocaleData.GetThreeLetterWindowsLangageName(cultureName);
+            return langName == null ? "ZZZ" /* default lang name */ : langName; 
+        }
+
+        private static CultureInfo[] EnumCultures(CultureTypes types)
+        {
+            if ((types & (CultureTypes.NeutralCultures | CultureTypes.SpecificCultures)) == 0)
+            {
+                return Array.Empty<CultureInfo>();
+            }
+            
+            int bufferLength = Interop.GlobalizationInterop.GetLocales(null, 0);
+            if (bufferLength <= 0)
+            {
+                return Array.Empty<CultureInfo>();
+            }
+            
+            Char [] chars = new Char[bufferLength];
+            
+            bufferLength = Interop.GlobalizationInterop.GetLocales(chars, bufferLength);
+            if (bufferLength <= 0)
+            {
+                return Array.Empty<CultureInfo>();
+            }
+            
+            bool enumNeutrals   = (types & CultureTypes.NeutralCultures) != 0; 
+            bool enumSpecificss = (types & CultureTypes.SpecificCultures) != 0; 
+            
+            List<CultureInfo> list = new List<CultureInfo>();
+            if (enumNeutrals) 
+            {
+                list.Add(CultureInfo.InvariantCulture);
+            }
+            
+            int index = 0;
+            while (index < bufferLength)
+            {
+                int length = (int) chars[index++];
+                if (index + length <= bufferLength)
+                {
+                    CultureInfo ci = CultureInfo.GetCultureInfo(new String(chars, index, length));
+                    if ((enumNeutrals && ci.IsNeutralCulture) || (enumSpecificss && !ci.IsNeutralCulture))
+                    {
+                        list.Add(ci);
+                    }
+                }
+                
+                index += length;
+            }
+            
+            return list.ToArray();
+        }
+        
+        private static string GetConsoleFallbackName(string cultureName)
+        {
+            return LocaleData.GetConsoleUICulture(cultureName);
+        }
+        
+        internal bool IsFramework // not applicable on Linux based systems 
+        {
+            get { return false; }
+        }
+        
+        internal bool IsWin32Installed // not applicable on Linux based systems
+        {
+            get { return false; }
+        }
+        
+        internal bool IsReplacementCulture // not applicable on Linux based systems
+        {
+            get { return false; }
         }
     }
 }

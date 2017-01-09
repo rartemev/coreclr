@@ -54,7 +54,7 @@ void InitJITHelpers1();
 void InitJITHelpers2();
 
 PCODE UnsafeJitFunction(MethodDesc* ftn, COR_ILMETHOD_DECODER* header,
-                        DWORD flags, DWORD flags2, ULONG* sizeOfCode = NULL);
+                        CORJIT_FLAGS flags, ULONG* sizeOfCode = NULL);
 
 void getMethodInfoHelper(MethodDesc * ftn,
                          CORINFO_METHOD_HANDLE ftnHnd,
@@ -647,7 +647,7 @@ public:
             );
 
     // Returns that compilation flags that are shared between JIT and NGen
-    static DWORD GetBaseCompileFlags(MethodDesc * ftn);
+    static CORJIT_FLAGS GetBaseCompileFlags(MethodDesc * ftn);
 
     // Resolve metadata token into runtime method handles.
     void resolveToken(/* IN, OUT */ CORINFO_RESOLVED_TOKEN * pResolvedToken);
@@ -1655,7 +1655,7 @@ struct VirtualFunctionPointerArgs
 
 FCDECL2(CORINFO_MethodPtr, JIT_VirtualFunctionPointer_Dynamic, Object * objectUNSAFE, VirtualFunctionPointerArgs * pArgs);
 
-typedef TADDR (F_CALL_CONV * FnStaticBaseHelper)(TADDR arg0, TADDR arg1);
+typedef HCCALL2_PTR(TADDR, FnStaticBaseHelper, TADDR arg0, TADDR arg1);
 
 struct StaticFieldAddressArgs
 {
@@ -1691,8 +1691,8 @@ public:
     static FCDECL3(void, UnsafeSetArrayElement, PtrArray* pPtrArray, INT32 index, Object* object);
 };
 
-DWORD GetDebuggerCompileFlags(Module* pModule, DWORD flags);
+CORJIT_FLAGS GetDebuggerCompileFlags(Module* pModule, CORJIT_FLAGS flags);
 
-bool TrackAllocationsEnabled();
+bool __stdcall TrackAllocationsEnabled();
 
 #endif // JITINTERFACE_H

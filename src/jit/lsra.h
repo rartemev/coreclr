@@ -73,6 +73,25 @@ struct LsraBlockInfo
     unsigned int         predBBNum;
     bool                 hasCriticalInEdge;
     bool                 hasCriticalOutEdge;
+
+#if TRACK_LSRA_STATS
+    // Per block maintained LSRA statistics.
+
+    // Number of spills of local vars or tree temps in this basic block.
+    unsigned spillCount;
+
+    // Number of GT_COPY nodes inserted in this basic block while allocating regs.
+    // Note that GT_COPY nodes are also inserted as part of basic block boundary
+    // resolution, which are accounted against resolutionMovCount but not
+    // against copyRegCount.
+    unsigned copyRegCount;
+
+    // Number of resolution moves inserted in this basic block.
+    unsigned resolutionMovCount;
+
+    // Number of critical edges from this block that are split.
+    unsigned splitEdgeCount;
+#endif // TRACK_LSRA_STATS
 };
 
 // This is sort of a bit mask
@@ -574,7 +593,7 @@ private:
     regNumber rotateBlockStartLocation(Interval* interval, regNumber targetReg, regMaskTP availableRegs);
 
     // This controls whether we always insert a GT_RELOAD instruction after a spill
-    // Note that this can be combined with LsraSpillAlways (or not)
+    // Note that this can be combined with LSRA_SPILL_ALWAYS (or not)
     enum LsraReload{LSRA_NO_RELOAD_IF_SAME = 0, LSRA_ALWAYS_INSERT_RELOAD = 0x400, LSRA_RELOAD_MASK = 0x400};
     LsraReload getLsraReload()
     {
@@ -874,6 +893,8 @@ private:
         unassignPhysReg(getRegisterRecord(reg), nullptr);
     }
 
+    void setIntervalAsSpilled(Interval* interval);
+    void setIntervalAsSplit(Interval* interval);
     void spillInterval(Interval* interval, RefPosition* fromRefPosition, RefPosition* toRefPosition);
 
     void spillGCRefs(RefPosition* killRefPosition);
@@ -1027,6 +1048,20 @@ private:
     void validateIntervals();
 #endif // DEBUG
 
+#if TRACK_LSRA_STATS
+    enum LsraStat{
+        LSRA_STAT_SPILL, LSRA_STAT_COPY_REG, LSRA_STAT_RESOLUTION_MOV, LSRA_STAT_SPLIT_EDGE,
+    };
+
+    void updateLsraStat(LsraStat stat, unsigned currentBBNum);
+
+    void dumpLsraStats(FILE* file);
+
+#define INTRACK_STATS(x) x
+#else // !TRACK_LSRA_STATS
+#define INTRACK_STATS(x)
+#endif // !TRACK_LSRA_STATS
+
     Compiler* compiler;
 
 private:
@@ -1073,6 +1108,10 @@ private:
         return BlockSetOps::IsMember(compiler, bbVisitedSet, block->bbNum);
     }
 
+#if DOUBLE_ALIGN
+    bool doDoubleAlign;
+#endif
+
     // A map from bbNum to the block information used during register allocation.
     LsraBlockInfo* blockInfo;
     BasicBlock* findPredBlockForLiveIn(BasicBlock* block, BasicBlock* prevBlock DEBUGARG(bool* pPredBlockIsAllocated));
@@ -1099,6 +1138,8 @@ private:
     unsigned int bbSeqCount;
     // The Location of the start of the current block.
     LsraLocation curBBStartLocation;
+    // True if the method contains any critical edges.
+    bool hasCriticalEdges;
 
     // Ordered list of RefPositions
     RefPositionList refPositions;
@@ -1118,6 +1159,12 @@ private:
     // Current set of live tracked vars, used during building of RefPositions to determine whether
     // to preference to callee-save
     VARSET_TP currentLiveVars;
+    // Set of variables that may require resolution across an edge.
+    // This is first constructed during interval building, to contain all the lclVars that are live at BB edges.
+    // Then, any lclVar that is always in the same register is removed from the set.
+    VARSET_TP resolutionCandidateVars;
+    // This set contains all the lclVars that are ever spilled or split.
+    VARSET_TP splitOrSpilledVars;
     // Set of floating point variables to consider for callee-save registers.
     VARSET_TP fpCalleeSaveCandidateVars;
 #if FEATURE_PARTIAL_SIMD_CALLEE_SAVE

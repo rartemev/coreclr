@@ -835,16 +835,16 @@ RtlVirtualUnwind_Unsafe(
 //  X86
 //
 
-#if defined(_TARGET_X86_)
-
-#pragma warning(push)
-#pragma warning (disable:4035)        // disable 4035 (function must return something)
-#define PcTeb 0x18
-#pragma warning(pop)
+#ifdef _TARGET_X86_
+#ifndef FEATURE_PAL
 
 typedef struct _DISPATCHER_CONTEXT {
     _EXCEPTION_REGISTRATION_RECORD* RegistrationPointer;
 } DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
+
+#endif // !FEATURE_PAL
+
+#define RUNTIME_FUNCTION__BeginAddress(prf)             (prf)->BeginAddress
 
 #endif // _TARGET_X86_
 

@@ -12,6 +12,7 @@ namespace System.Text
     using System;
     using System.Runtime.Serialization;
     using System.Security.Permissions;
+    using System.Diagnostics;
     using System.Diagnostics.Contracts;
 
     /*=================================SurrogateEncoder==================================
@@ -30,7 +31,7 @@ namespace System.Text
         internal SurrogateEncoder(SerializationInfo info, StreamingContext context)
         {
             // Any info?
-            if (info==null) throw new ArgumentNullException("info");
+            if (info==null) throw new ArgumentNullException(nameof(info));
             Contract.EndContractBlock();
 
             // All versions have a code page
@@ -38,7 +39,6 @@ namespace System.Text
         }
 
         // Just get it from GetEncoding
-        [System.Security.SecurityCritical]  // auto-generated
         public Object GetRealObject(StreamingContext context)
         {
             // Need to get our Encoding's Encoder
@@ -46,11 +46,10 @@ namespace System.Text
         }
 
         // ISerializable implementation
-        [System.Security.SecurityCritical]  // auto-generated_required
         void ISerializable.GetObjectData(SerializationInfo info, StreamingContext context)
         {
             // We cannot ever call this.
-            Contract.Assert(false, "Didn't expect to make it to SurrogateEncoder.GetObjectData");
+            Debug.Assert(false, "Didn't expect to make it to SurrogateEncoder.GetObjectData");
             throw new ArgumentException(Environment.GetResourceString("Arg_ExecutionEngineException"));
         }
     }

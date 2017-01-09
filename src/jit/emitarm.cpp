@@ -4368,6 +4368,7 @@ void emitter::emitIns_J_R(instruction ins, emitAttr attr, BasicBlock* dst, regNu
  *
  * EC_FUNC_TOKEN       : addr is the method address
  * EC_FUNC_ADDR        : addr is the absolute address of the function
+ *                       if addr is NULL, it is a recursive call
  *
  * If callType is one of these emitCallTypes, addr has to be NULL.
  * EC_INDIR_R          : "call ireg".
@@ -4463,13 +4464,11 @@ void emitter::emitIns_Call(EmitCallType          callType,
     assert(argSize % (int)sizeof(void*) == 0);
     argCnt = argSize / (int)sizeof(void*);
 
-#ifdef DEBUGGING_SUPPORT
     /* Managed RetVal: emit sequence point for the call */
     if (emitComp->opts.compDbgInfo && ilOffset != BAD_IL_OFFSET)
     {
         codeGen->genIPmappingAdd(ilOffset, false);
     }
-#endif
 
     /*
         We need to allocate the appropriate instruction descriptor based
@@ -4555,8 +4554,8 @@ void emitter::emitIns_Call(EmitCallType          callType,
 
         assert(callType == EC_FUNC_TOKEN || callType == EC_FUNC_ADDR);
 
-        assert(addr != NULL);
-        assert(codeGen->validImmForBL((ssize_t)addr));
+        // if addr is nullptr then this call is treated as a recursive call.
+        assert(addr == nullptr || codeGen->arm_Valid_Imm_For_BL((ssize_t)addr));
 
         if (isJump)
         {
@@ -5266,8 +5265,8 @@ BYTE* emitter::emitOutputLJ(insGroup* ig, BYTE* dst, instrDesc* i)
                 else
 #endif
                 {
-                    assert(distVal >= -16777216);
-                    assert(distVal <= 16777214);
+                    assert(distVal >= CALL_DIST_MAX_NEG);
+                    assert(distVal <= CALL_DIST_MAX_POS);
 
                     if (distVal < 0)
                         code |= 1 << 26;
@@ -6211,7 +6210,14 @@ size_t emitter::emitOutputInstr(insGroup* ig, instrDesc* id, BYTE** dp)
                 sz = sizeof(instrDesc);
             }
 
-            addr = id->idAddr()->iiaAddr;
+            if (id->idAddr()->iiaAddr == NULL) /* a recursive call */
+            {
+                addr = emitCodeBlock;
+            }
+            else
+            {
+                addr = id->idAddr()->iiaAddr;
+            }
             code = emitInsCode(ins, fmt);
 
 #ifdef RELOC_SUPPORT
@@ -7530,31 +7536,53 @@ void emitter::emitInsMov(instruction ins, emitAttr attr, GenTree* node)
     switch (node->OperGet())
     {
         case GT_IND:
-        {
-            GenTree* addr = node->gtGetOp1();
-            assert(!addr->isContained());
-            codeGen->genConsumeReg(addr);
-            emitIns_R_R(ins, attr, node->gtRegNum, addr->gtRegNum);
-        }
-        break;
-
         case GT_STOREIND:
         {
-            GenTree* addr = node->gtGetOp1();
-            GenTree* data = node->gtOp.gtOp2;
+            GenTreeIndir* indir = node->AsIndir();
+            GenTree*      addr  = indir->Addr();
+            GenTree*      data  = indir->gtOp.gtOp2;
 
-            assert(!addr->isContained());
-            assert(!data->isContained());
-            codeGen->genConsumeReg(addr);
-            codeGen->genConsumeReg(data);
+            regNumber reg = (node->OperGet() == GT_IND) ? node->gtRegNum : data->gtRegNum;
 
-            if (addr->OperGet() == GT_CLS_VAR_ADDR)
+            if (addr->isContained())
             {
-                emitIns_C_R(ins, attr, addr->gtClsVar.gtClsVarHnd, data->gtRegNum, 0);
+                assert(addr->OperGet() == GT_LCL_VAR_ADDR || addr->OperGet() == GT_LEA);
+
+                int   offset = 0;
+                DWORD lsl    = 0;
+
+                if (addr->OperGet() == GT_LEA)
+                {
+                    offset = (int)addr->AsAddrMode()->gtOffset;
+                    if (addr->AsAddrMode()->gtScale > 0)
+                    {
+                        assert(isPow2(addr->AsAddrMode()->gtScale));
+                        BitScanForward(&lsl, addr->AsAddrMode()->gtScale);
+                    }
+                }
+
+                GenTree* memBase = indir->Base();
+
+                if (indir->HasIndex())
+                {
+                    NYI_ARM("emitInsMov HasIndex");
+                }
+                else
+                {
+                    // TODO check offset is valid for encoding
+                    emitIns_R_R_I(ins, attr, reg, memBase->gtRegNum, offset);
+                }
             }
             else
             {
-                emitIns_R_R(ins, attr, addr->gtRegNum, data->gtRegNum);
+                if (addr->OperGet() == GT_CLS_VAR_ADDR)
+                {
+                    emitIns_C_R(ins, attr, addr->gtClsVar.gtClsVarHnd, data->gtRegNum, 0);
+                }
+                else
+                {
+                    emitIns_R_R(ins, attr, reg, addr->gtRegNum);
+                }
             }
         }
         break;
@@ -7575,7 +7603,6 @@ void emitter::emitInsMov(instruction ins, emitAttr attr, GenTree* node)
             else
             {
                 assert(!data->isContained());
-                codeGen->genConsumeReg(data);
                 emitIns_S_R(ins, attr, data->gtRegNum, varNode->GetLclNum(), 0);
                 codeGen->genUpdateLife(varNode);
             }
