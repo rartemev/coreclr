@@ -64,6 +64,10 @@ get_current_linux_name() {
 }
 
 if [ -z "$__DOTNET_PKG" ]; then
+    if [ "$(uname -m | grep "i[3456]86")" = "i686" ]; then
+        echo "Error: build not supported on 32 bit Unix"
+        exit 1
+    fi
 OSName=$(uname -s)
     case $OSName in
         Darwin)

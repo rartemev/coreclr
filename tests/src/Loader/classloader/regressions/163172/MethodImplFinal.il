@@ -2,7 +2,6 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-.assembly extern System.Console { }
 // this test is a regression case for VSWhidbey 163172
 // Class A has method f()
 // Class B extends A and explicitly implements A::f() (with B::g()) B::g() is final 
@@ -12,22 +11,28 @@
 // The final on B::g() causd the target slot (A::f()) to be marked final as well and we got 
 // TypeLoadException when instantiating C and D
 
-
-
-// Metadata version: v1.2.30801
+.assembly extern System.Console
+{
+  .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
+  .ver 4:0:0:0
+}
 .assembly extern mscorlib
 {
-  .publickeytoken = (B7 7A 5C 56 19 34 E0 89 )                         // .z\V.4..
-  .hash = (BB F5 50 CF 5C DC 3F F4 03 2C 76 78 5A 79 37 C7   // ..P.\.?..,vxZy7.
-           A4 08 4B CE )                                     // ..K.
-  .ver 1:2:3400:0
+  .publickeytoken = (B7 7A 5C 56 19 34 E0 89)
+  .ver 4:0:0:0
 }
+.assembly extern System.Runtime
+{
+  .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
+  .ver 4:0:0:0
+}
+
 .assembly MethodImplFinal
 {
   .permissionset reqmin
             "<PermissionSet class=\"System.Security.PermissionSe"
   + "t\"\r\nversion=\"1\">\r\n<IPermission class=\"System.Security.Permis"
-  + "sions.SecurityPermission, mscorlib, Version=1.2.3400.0, Cult"
+  + "sions.SecurityPermission, mscorlib, Version=4.0.0.0, Cult"
   + "ure=neutral, PublicKeyToken=b77a5c561934e089\"\r\nversion=\"1\"\r\n"
   + "Flags=\"SkipVerification\"/>\r\n</PermissionSet>\r\n"
   .hash algorithm 0x00008004
