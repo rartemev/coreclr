@@ -132,7 +132,6 @@ build_Tests()
     fi
 
     export CORE_ROOT="$XunitTestBinBase/Tests/Core_Root"
-    CORE_OVERLAY="$XunitTestBinBase/Tests/Core_Root_$__RuntimeId"
 
     if [ ! -f "${CORE_ROOT}" ]; then
         mkdir -p ${CORE_ROOT}
@@ -145,9 +144,9 @@ build_Tests()
     # make sure the correct ilasm will be used
     export CscToolPath="${CORE_ROOT}"
 
-    build_Tests_internal "Restore_Product" "${__ProjectDir}/tests/build.proj" " -UpdateDependencies -BatchRestorePackages  ${__BuildAgainstPackagesArg}" "Restore product binaries (build tests)"
+    build_Tests_internal "Restore_Product" "${__ProjectDir}/tests/build.proj" " -UpdateDependencies -BatchRestorePackages" "Restore product binaries (build tests)"
 
-    build_Tests_internal "Tests_GenerateRuntimeLayout" "${__ProjectDir}/tests/runtest.proj" "-BinPlaceRef -BinPlaceProduct -CopyCrossgenToProduct ${__BuildAgainstPackagesArg}" "Restore product binaries (run tests)"
+    build_Tests_internal "Tests_GenerateRuntimeLayout" "${__ProjectDir}/tests/runtest.proj" "-BinPlaceRef -BinPlaceProduct -CopyCrossgenToProduct" "Restore product binaries (run tests)"
 
     if [ -n "$__UpdateInvalidPackagesArg" ]; then
         __up=-updateinvalidpackageversion
@@ -167,7 +166,7 @@ build_Tests()
 
     if [ ! -f $__ManagedTestBuiltMarker ]; then
 
-	    build_Tests_internal "Tests_Managed" "$__ProjectDir/tests/build.proj" "$__up $__BuildAgainstPackagesArg" "Managed tests build (build tests)"
+	    build_Tests_internal "Tests_Managed" "$__ProjectDir/tests/build.proj" "$__up" "Managed tests build (build tests)"
 
         if [ $? -ne 0 ]; then
             echo "${__MsgPrefix}Error: build failed. Refer to the build log files for details (above)"
@@ -187,7 +186,7 @@ build_Tests()
 
     if [ ! -f $__XUnitWrapperBuiltMarker ]; then
 
-        build_Tests_internal "Tests_XunitWrapper" "$__ProjectDir/tests/runtest.proj" "-BuildWrappers -MsBuildEventLogging=\" \" $__BuildAgainstPackagesArg" "Test Xunit Wrapper"
+        build_Tests_internal "Tests_XunitWrapper" "$__ProjectDir/tests/runtest.proj" "-BuildWrappers -MsBuildEventLogging=\" \" " "Test Xunit Wrapper"
 
         if [ $? -ne 0 ]; then
             echo "${__MsgPrefix}Error: build failed. Refer to the build log files for details (above)"
@@ -207,7 +206,7 @@ build_Tests()
 
     if [ $__ZipTests -ne 0 ]; then
         echo "${__MsgPrefix}ZIP tests packages..."
-        build_Tests_internal "Helix_Prep" "$__ProjectDir/tests/helixprep.proj" "$__BuildAgainstPackagesArg $RuntimeIdArg" "Prep test binaries for Helix publishing"
+        build_Tests_internal "Helix_Prep" "$__ProjectDir/tests/helixprep.proj" " " "Prep test binaries for Helix publishing"
     fi
 }
 
@@ -379,7 +378,6 @@ __DistroRid=""
 __cmakeargs=""
 __PortableLinux=0
 __msbuildonunsupportedplatform=0
-__BuildAgainstPackagesArg=
 __ZipTests=0
 __NativeTestIntermediatesDir=
 __RunTests=0

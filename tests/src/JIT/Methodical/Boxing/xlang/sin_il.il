@@ -8,17 +8,7 @@
   .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
   .ver 4:0:0:0
 }
-.assembly extern mscorlib
-{
-  .publickeytoken = (B7 7A 5C 56 19 34 E0 89 )
-  .hash = (F2 9A DF 4E 4F 6B AB 87 31 14 43 DD C2 C8 D5 1E 83 95 73 F7 )
-  .ver 2:0:3600:0
-}
-.assembly extern System.Runtime
-{
-  .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
-  .ver 4:0:0:0
-}
+.assembly extern legacy library mscorlib { auto }
 .assembly 'sin_il_il' {}
 .assembly extern sinlib_il
 {

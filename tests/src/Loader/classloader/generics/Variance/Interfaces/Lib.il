@@ -2,22 +2,21 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-.assembly extern System.Console
-{
-  .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
-  .ver 4:0:0:0
-}
+.assembly extern System.Console { }
+
+//  Microsoft (R) .NET Framework IL Disassembler.  Version 2.0.31217.0
+//  Copyright (C) Microsoft Corporation 1998-2004. All rights reserved.
+
+
+
+// Metadata version: v2.0.31217
 .assembly extern mscorlib
 {
-  .publickeytoken = (B7 7A 5C 56 19 34 E0 89)
-  .ver 4:0:0:0
+  .publickeytoken = (B7 7A 5C 56 19 34 E0 89 )                         // .z\V.4..
+  .hash = (34 49 3D D8 CD 90 8A 7F 24 E0 96 E0 1F 82 E7 47   // 4I=.....$......G
+           CD A1 2A A0 )                                     // ..*.
+  .ver 2:0:3600:0
 }
-.assembly extern System.Runtime
-{
-  .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
-  .ver 4:0:0:0
-}
-
 .assembly Lib
 {
 

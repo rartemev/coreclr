@@ -2,21 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-.assembly extern System.Console
-{
-  .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
-  .ver 4:0:0:0
-}
-.assembly extern mscorlib
-{
-  .publickeytoken = (B7 7A 5C 56 19 34 E0 89)
-  .ver 4:0:0:0
-}
-.assembly extern System.Runtime
-{
-  .publickeytoken = (B0 3F 5F 7F 11 D5 0A 3A )
-  .ver 4:0:0:0
-}
+.assembly extern System.Console { }
+.assembly extern mscorlib { }
 
 .assembly GenericAssert
 {
@@ -25,7 +12,7 @@
       	.custom instance void [mscorlib]System.Security.SecurityRulesAttribute::.ctor(valuetype [mscorlib]System.Security.SecurityRuleSet) = ( 01 00 02 00 00 )  .custom instance void [mscorlib]System.Security.SecurityTransparentAttribute::.ctor() = ( 01 00 00 00 )
 	.permissionset reqrefuse
 		"<PermissionSet class=\"System.Security.PermissionSet\" version=\"1\">" +
-			"<IPermission class=\"System.Security.Permissions.SecurityPermission, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089\" version=\"1\"" +
+			"<IPermission class=\"System.Security.Permissions.SecurityPermission, mscorlib, Version=2.0.3600, Culture=neutral, PublicKeyToken=b77a5c561934e089\" version=\"1\"" +
 				"Flags=\"SkipVerification\"/>" +
 		"</PermissionSet>"
 }
