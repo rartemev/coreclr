@@ -213,6 +213,237 @@ NESTED_END OnHijackTripThread, _TEXT
 
 #endif // FEATURE_HIJACK
 
+//
+//    typedef struct _PROFILE_PLATFORM_SPECIFIC_DATA
+//    {
+//       FunctionID *functionId; // function ID comes in the r11 register
+//       void       *rbp;
+//       void       *probersp;
+//       void       *ip;
+//       void       *profiledRsp;
+//       UINT64      rax;
+//       LPVOID      hiddenArg;
+//       UINT64      flt0;
+//       UINT64      flt1;
+//       UINT64      flt2;
+//       UINT64      flt3;
+//       UINT64      flt4;
+//       UINT64      flt5;
+//       UINT64      flt6;
+//       UINT64      flt7;
+//       UINT32      flags;
+//   } PROFILE_PLATFORM_SPECIFIC_DATA, *PPROFILE_PLATFORM_SPECIFIC_DATA;
+//
+#define SIZEOF_PROFILE_PLATFORM_SPECIFIC_DATA 0x8*15 + 0x4*2    // includes fudge to make FP_SPILL right
+#define SIZEOF_OUTGOING_ARGUMENT_HOMES        0x8*4
+#define SIZEOF_FP_ARG_SPILL                   0x10*2
+
+// Need to be careful to keep the stack 16byte aligned here, since we are pushing 3
+// arguments that will align the stack and we just want to keep it aligned with our
+// SIZEOF_STACK_FRAME
+
+#define OFFSETOF_PLATFORM_SPECIFIC_DATA       SIZEOF_OUTGOING_ARGUMENT_HOMES
+
+// we will just spill into the PROFILE_PLATFORM_SPECIFIC_DATA structure
+#define OFFSETOF_FP_ARG_SPILL                 SIZEOF_OUTGOING_ARGUMENT_HOMES + \
+                                              SIZEOF_PROFILE_PLATFORM_SPECIFIC_DATA
+
+#define SIZEOF_STACK_FRAME                    SIZEOF_OUTGOING_ARGUMENT_HOMES + \
+                                              SIZEOF_PROFILE_PLATFORM_SPECIFIC_DATA + \
+                                              SIZEOF_MAX_FP_ARG_SPILL
+
+#define PROFILE_ENTER                         0x1
+#define PROFILE_LEAVE                         0x2
+#define PROFILE_TAILCALL                      0x4
+
+#define real4 dword
+#define real8 qword
+
+// ***********************************************************
+//  NOTE:
+//
+//  Register preservation scheme:
+//
+//      Preserved:
+//          - rbx, rsp, rbp, r12, r13, r14, r15
+//          - rax, rdx (result 64 integer registers)
+//          - xmm0, xmm1 (result 128 float registers)
+//
+//      Not Preserved:
+//          - integer argument registers (rdi, rsi, rdx, rcx, r8, r9)
+//          - floating point argument registers (xmm1-7)
+//          - volatile integer registers (rax, r10, r11)
+//          - volatile floating point registers (xmm7-15)
+//
+// ***********************************************************
+
+//EXTERN_C void ProfileEnterNaked(FunctionIDOrClientID functionIDOrClientID, size_t profiledRsp);
+NESTED_ENTRY ProfileEnterNaked, _TEXT, NoHandler
+        push_nonvol_reg         rax
+
+//      Upon entry :
+//          rdi = clientInfo
+//          rsi = profiledRsp
+
+        lea                     rax, [rsp + 10h]    // caller rsp
+        mov                     r10, [rax - 8h]     // return address
+
+        alloc_stack             SIZEOF_STACK_FRAME
+
+        // correctness of return value in structure doesnt matter for enter probe
+
+
+        // setup ProfilePlatformSpecificData structure
+        xor                     r8, r8;
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA +  0h], r8     // r8 is null      -- struct functionId field
+        save_reg_postrsp        rbp, OFFSETOF_PLATFORM_SPECIFIC_DATA +    8h          //                 -- struct rbp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 10h], rax    // caller rsp      -- struct probeRsp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 18h], r10    // return address  -- struct ip field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 20h], rsi    //                 -- struct profiledRsp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 28h], r8     // r8 is null      -- struct rax field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 30h], r8     // r8 is null      -- struct hiddenArg field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 38h], xmm0    //      -- struct flt0 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 40h], xmm1    //      -- struct flt1 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 48h], xmm2    //      -- struct flt2 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 50h], xmm3    //      -- struct flt3 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 58h], xmm4    //      -- struct flt4 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 60h], xmm5    //      -- struct flt5 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 68h], xmm6    //      -- struct flt6 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 70h], xmm7    //      -- struct flt7 field
+        mov                     r10, PROFILE_ENTER
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 78h], r10d   // flags    //      -- struct flags field
+
+        // we need to be able to restore the fp return register
+        save_xmm128_postrsp     xmm0, OFFSETOF_FP_ARG_SPILL +  0h
+        save_xmm128_postrsp     xmm1, OFFSETOF_FP_ARG_SPILL +  10h
+    END_PROLOGUE
+
+        // rdi already contains the clientInfo
+        lea                     rsi, [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA]
+        call                    ProfileEnter
+
+        // restore fp return register
+        movdqa                  xmm1, [rsp + OFFSETOF_FP_ARG_SPILL +  10h]
+        movdqa                  xmm0, [rsp + OFFSETOF_FP_ARG_SPILL +  0h]
+
+        // begin epilogue
+        add                     rsp, SIZEOF_STACK_FRAME
+        pop                     rax
+        ret
+NESTED_END ProfileEnterNaked, _TEXT
+
+//EXTERN_C void ProfileLeaveNaked(FunctionIDOrClientID functionIDOrClientID, size_t profiledRsp);
+NESTED_ENTRY ProfileLeaveNaked, _TEXT, NoHandler
+        push_nonvol_reg         rax
+
+//      Upon entry :
+//          rdi = clientInfo
+//          rsi = profiledRsp
+
+        // need to be careful with rax here because it contains the return value which we want to harvest
+
+        lea                     r10, [rsp + 10h]    // caller rsp
+        mov                     r11, [r10 - 8h]     // return address
+
+        alloc_stack             SIZEOF_STACK_FRAME
+
+        // correctness of argument registers in structure doesnt matter for leave probe
+
+        // setup ProfilePlatformSpecificData structure
+        xor                     r8, r8;
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA +  0h], r8     // r8 is null      -- struct functionId field
+        save_reg_postrsp        rbp, OFFSETOF_PLATFORM_SPECIFIC_DATA +    8h          //                 -- struct rbp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 10h], r10    // caller rsp      -- struct probeRsp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 18h], r11    // return address  -- struct ip field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 20h], rsi    //                 -- struct profiledRsp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 28h], rax    // return value    -- struct rax field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 30h], r8     // r8 is null      -- struct hiddenArg field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 38h], xmm0    //      -- struct flt0 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 40h], xmm1    //      -- struct flt1 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 48h], xmm2    //      -- struct flt2 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 50h], xmm3    //      -- struct flt3 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 58h], xmm4    //      -- struct flt4 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 60h], xmm5    //      -- struct flt5 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 68h], xmm6    //      -- struct flt6 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 70h], xmm7    //      -- struct flt7 field
+        mov                     r10, PROFILE_LEAVE
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 78h], r10d   // flags           -- struct flags field
+
+        // we need to be able to restore the fp return register
+        save_xmm128_postrsp     xmm0, OFFSETOF_FP_ARG_SPILL +  0h
+        save_xmm128_postrsp     xmm1, OFFSETOF_FP_ARG_SPILL +  10h
+    END_PROLOGUE
+
+        // rdi already contains the clientInfo
+        lea                     rsi, [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA]
+        call                    ProfileLeave
+
+        // restore fp return register
+        movdqa                  xmm1, [rsp + OFFSETOF_FP_ARG_SPILL +  10h]
+        movdqa                  xmm0, [rsp + OFFSETOF_FP_ARG_SPILL +  0h]
+
+        // begin epilogue
+        add                     rsp, SIZEOF_STACK_FRAME
+        pop                     rax
+        ret
+NESTED_END ProfileLeaveNaked, _TEXT
+
+//EXTERN_C void ProfileTailcallNaked(FunctionIDOrClientID functionIDOrClientID, size_t profiledRsp);
+NESTED_ENTRY ProfileTailcallNaked, _TEXT, NoHandler
+        push_nonvol_reg         rax
+
+//      Upon entry :
+//          rdi = clientInfo
+//          rsi = profiledRsp
+
+        lea                     rax, [rsp + 10h]    // caller rsp
+        mov                     r11, [rax - 8h]     // return address
+
+        alloc_stack             SIZEOF_STACK_FRAME
+
+        // correctness of return values and argument registers in structure
+        // doesnt matter for tailcall probe
+
+
+        // setup ProfilePlatformSpecificData structure
+        xor                     r8, r8;
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA +  0h], r8     // r8 is null      -- struct functionId field
+        save_reg_postrsp        rbp, OFFSETOF_PLATFORM_SPECIFIC_DATA +    8h          //                 -- struct rbp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 10h], rax    // caller rsp      -- struct probeRsp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 18h], r11    // return address  -- struct ip field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 20h], rsi    //                 -- struct profiledRsp field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 28h], r8     // r8 is null      -- struct rax field
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 30h], r8     // r8 is null      -- struct hiddenArg field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 38h], xmm0    //      -- struct flt0 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 40h], xmm1    //      -- struct flt1 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 48h], xmm2    //      -- struct flt2 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 50h], xmm3    //      -- struct flt3 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 58h], xmm4    //      -- struct flt4 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 60h], xmm5    //      -- struct flt5 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 68h], xmm6    //      -- struct flt6 field
+        movsd                   real8 ptr [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 70h], xmm7    //      -- struct flt7 field
+        mov                     r10, PROFILE_LEAVE
+        mov                     [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA + 78h], r10d   // flags           -- struct flags field
+
+        // we need to be able to restore the fp return register
+        save_xmm128_postrsp     xmm0, OFFSETOF_FP_ARG_SPILL +  0h
+        save_xmm128_postrsp     xmm1, OFFSETOF_FP_ARG_SPILL +  10h
+    END_PROLOGUE
+
+        // rdi already contains the clientInfo
+        lea                     rsi, [rsp + OFFSETOF_PLATFORM_SPECIFIC_DATA]
+        call                    ProfileTailcall
+
+        // restore fp return register
+        movdqa                  xmm1, [rsp + OFFSETOF_FP_ARG_SPILL +  10h]
+        movdqa                  xmm0, [rsp + OFFSETOF_FP_ARG_SPILL +  0h]
+
+        // begin epilogue
+        add                     rsp, SIZEOF_STACK_FRAME
+        pop                     rax
+        ret
+NESTED_END ProfileTailcallNaked, _TEXT
+
 LEAF_ENTRY SinglecastDelegateInvokeStub, _TEXT                                        
                                                                                       
         test    rdi, rdi                                                              

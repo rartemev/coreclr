@@ -7416,13 +7416,13 @@ void CodeGen::genProfilingEnterCallback(regNumber initReg, bool* pInitRegZeroed)
         return;
     }
 
-#if defined(_TARGET_AMD64_) && !defined(UNIX_AMD64_ABI) // No profiling for System V systems yet.
+#if defined(_TARGET_AMD64_)
     unsigned   varNum;
     LclVarDsc* varDsc;
 
     // Since the method needs to make a profiler callback, it should have out-going arg space allocated.
     noway_assert(compiler->lvaOutgoingArgSpaceVar != BAD_VAR_NUM);
-    noway_assert(compiler->lvaOutgoingArgSpaceSize >= (4 * REGSIZE_BYTES));
+    noway_assert(compiler->lvaOutgoingArgSpaceSize >= (MAX_REG_ARG * REGSIZE_BYTES));
 
     // Home all arguments passed in arg registers (RCX, RDX, R8 and R9).
     // In case of vararg methods, arg regs are already homed.
