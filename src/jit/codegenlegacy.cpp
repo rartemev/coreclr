@@ -11364,8 +11364,6 @@ void CodeGen::genCodeForTreeSmpOpAsg(GenTreePtr tree)
 
             if (VarSetOps::IsMember(compiler, genUpdateLiveSetForward(op2), varDsc->lvVarIndex))
             {
-                noway_assert(compiler->opts.compDbgCode);
-
                 /* The predictor might expect us to generate op2 directly
                    into the var's register. However, since the variable is
                    already alive, first kill it and its register. */
