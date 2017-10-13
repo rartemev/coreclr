@@ -6289,13 +6289,13 @@ void CodeGen::genAllocLclFrame(unsigned frameSize, regNumber initReg, bool* pIni
 //        inst_IV(INS_jge, bytesForBackwardJump); // Branch backwards to start of loop
 //        inst_RV_IV(INS_add, REG_SPBASE, (ssize_t)frameSize, EA_PTRSIZE); // deallocate stack
 
-        int alignedFrameSize = AlignUp(frameSize, pageSize);
+        //int alignedFrameSize = AlignUp(frameSize, pageSize);
 
-        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, initReg, REG_SPBASE, -alignedFrameSize);
+        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, initReg, REG_SPBASE, -frameSize);
 
         getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, -pageSize);
-        getEmitter()->emitIns_R_AR(INS_TEST, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, 0);
-        inst_RV_RV(INS_cmp, REG_SPBASE, initReg);
+        getEmitter()->emitIns_R_AR(INS_TEST, EA_PTRSIZE, initReg, REG_SPBASE, 0);
+        inst_RV_RV(INS_cmp, initReg, REG_SPBASE);
 
         int bytesForBackwardJump;
 #ifdef _TARGET_AMD64_
@@ -6306,9 +6306,9 @@ void CodeGen::genAllocLclFrame(unsigned frameSize, regNumber initReg, bool* pIni
         bytesForBackwardJump = -12;
 #endif // !_TARGET_AMD64_
 
-        inst_IV(INS_jl, bytesForBackwardJump); // Branch backwards to start of loop
+        inst_IV(INS_jge, bytesForBackwardJump); // Branch backwards to start of loop
 
-        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, alignedFrameSize); // restore stack pointer
+        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, initReg, frameSize); // restore stack pointer
 
 
 #endif // !CPU_LOAD_STORE_ARCH
