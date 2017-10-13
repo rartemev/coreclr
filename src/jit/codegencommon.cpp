@@ -6256,19 +6256,19 @@ void CodeGen::genAllocLclFrame(unsigned frameSize, regNumber initReg, bool* pIni
         //}
         //assert(sp_offset == frameSize);
 
-        int nextOffset = padding;
-        int spOffset = 0;
+        //int nextOffset = padding;
+        //int spOffset = 0;
 
-        while (spOffset < frameSize) {
-            getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, -nextOffset);
-            getEmitter()->emitIns_R_AR(INS_TEST, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, 0);
-            spOffset += nextOffset;
-            nextOffset = pageSize;
-        }
+        //while (spOffset < frameSize) {
+        //    getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, -nextOffset);
+        //    getEmitter()->emitIns_R_AR(INS_TEST, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, 0);
+        //    spOffset += nextOffset;
+        //    nextOffset = pageSize;
+        //}
 
-        assert(spOffset == frameSize);
+        //assert(spOffset == frameSize);
 
-        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, frameSize); // restore stack pointer
+        //getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, frameSize); // restore stack pointer
 
 //        inst_RV_IV(INS_mov, initReg, (ssize_t)frameSize, EA_PTRSIZE); // init initReg with frameSize
 //        inst_RV_RV(INS_sub, REG_SPBASE, initReg);                     // allocate stack to make Linux kernel understand that it's probe code
@@ -6288,6 +6288,29 @@ void CodeGen::genAllocLclFrame(unsigned frameSize, regNumber initReg, bool* pIni
 //
 //        inst_IV(INS_jge, bytesForBackwardJump); // Branch backwards to start of loop
 //        inst_RV_IV(INS_add, REG_SPBASE, (ssize_t)frameSize, EA_PTRSIZE); // deallocate stack
+
+        int alignedFrameSize = AlignUp(frameSize, pageSize);
+
+        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, initReg, REG_SPBASE, -alignedFrameSize);
+
+        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, -pageSize);
+        getEmitter()->emitIns_R_AR(INS_TEST, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, 0);
+        inst_RV_RV(INS_cmp, REG_SPBASE, initReg);
+
+        int bytesForBackwardJump;
+#ifdef _TARGET_AMD64_
+        assert((initReg == REG_EAX) || (initReg == REG_EBP)); // We use RBP as initReg for EH funclets.
+        bytesForBackwardJump = -15;
+#else  // !_TARGET_AMD64_
+        assert(initReg == REG_EAX);
+        bytesForBackwardJump = -12;
+#endif // !_TARGET_AMD64_
+
+        inst_IV(INS_jl, bytesForBackwardJump); // Branch backwards to start of loop
+
+        getEmitter()->emitIns_R_AR(INS_lea, EA_PTRSIZE, REG_SPBASE, REG_SPBASE, alignedFrameSize); // restore stack pointer
+
+
 #endif // !CPU_LOAD_STORE_ARCH
 
         *pInitRegZeroed = false; // The initReg does not contain zero
